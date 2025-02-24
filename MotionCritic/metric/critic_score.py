@@ -3,7 +3,7 @@ import os
 PROJ_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(PROJ_DIR)
 
-from lib.model.critic import MotionCritic, MotionCritic_s
+from lib.model.critic import MotionCritic
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -20,8 +20,8 @@ import numpy as np
 
 from scipy.stats import wilcoxon
 
-val_pth_name = "mlist_mdmfull_valshuffle.pth"
-# val_pth_name = "mlist_flame_better.pth"
+# val_pth_name = "mlist_mdmfull_valshuffle.pth"
+val_pth_name = "mlist_flame.pth"
 
 
 device = torch.device('cuda:0')
@@ -94,7 +94,8 @@ class motion_pair_dataset(Dataset):
         return len(self.data)
     
 
-val_pth = os.path.join(PROJ_DIR, 'datasets/'+ val_pth_name)
+val_pth = os.path.join(PROJ_DIR, 'data/'+ val_pth_name)
+print(f"val_pth is {val_pth}")
 val_motion_pairs = motion_pair_dataset(motion_pair_list_name=val_pth)
 
 
@@ -112,6 +113,7 @@ for val_batch_data in val_loader:
 
 all_scores = torch.cat(all_scores, dim=0)
 print(f"all_scores' shape {all_scores.shape}")
+print(all_scores[:5])
 
 
 metric_func(all_scores)

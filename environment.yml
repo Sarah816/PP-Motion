@@ -119,9 +119,9 @@ dependencies:
       - blobfile==2.0.2
       - cachetools==5.3.3
       - chumpy==0.70
-      - clip==1.0
+      # - clip==1.0
       - docker-pycreds==0.4.0
-      - en-core-web-sm==3.3.0
+      # - en-core-web-sm==3.3.0
       - flask==2.2.5
       - freetype-py==2.4.0
       - ftfy==6.1.1
@@ -141,7 +141,8 @@ dependencies:
       - protobuf==4.24.4
       - psutil==5.9.8
       - pycryptodomex==3.20.0
-      - pyglet==1.2.4
+      # - pyglet==1.2.4
+      - pyglet==1.4.10
       - pyopengl==3.1.0
       - pyrender==0.1.45
       - pytorch-warmup==0.1.1
@@ -156,10 +157,10 @@ dependencies:
       - smplx==0.1.28
       - srsly==2.4.4
       - termcolor==2.3.0
-      - thinc==8.0.17
-      - torch==1.10.1+cu111
-      - torchaudio==0.10.1+cu111
-      - torchvision==0.11.2+cu111
+      # - thinc==8.0.17
+      # - torch==1.10.1+cu111
+      # - torchaudio==0.10.1+cu111
+      # - torchvision==0.11.2+cu111
       - typing-extensions==4.7.1
       - urllib3==1.26.12
       - wandb==0.17.0

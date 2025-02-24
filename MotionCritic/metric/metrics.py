@@ -43,14 +43,14 @@ def choose_gt_dataset_from_filename(file_name):
         return gt_flame[0]
 
 
-gt_humanact12 = [torch.load(os.path.join(PROJ_DIR, f'metric/metrics_data/gt-packed/gt-humanact12/motion-gt{i}.pth'))['motion'] for i in range(12)]
-gt_uestc = [torch.load(os.path.join(PROJ_DIR, f'metric/metrics_data/gt-packed/gt-uestc/motion-gtuestc{i}.pth'))['motion'] for i in range(40)]
+gt_humanact12 = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-humanact12/motion-gt{i}.pth'))['motion'] for i in range(12)]
+gt_uestc = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-uestc/motion-gtuestc{i}.pth'))['motion'] for i in range(40)]
 
 gt_humanact12xyz = []
 gt_uestcxyz = []
 
 
-gt_flame = [torch.load(os.path.join(PROJ_DIR, f'metric/metrics_data/gt-packed/gt-flame/motion-gtflame.pth'))]
+gt_flame = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-flame/motion-gtflame.pth'))]
 gt_flamexyz = []
 
 def extract_number_from_filename(file_name):
@@ -237,7 +237,7 @@ def rootloc_pairs_from_filename(file_name, choise):
 def jointxyz_pairs_from_filename(file_name, choise):
     better_loc = []
     worse_loc = []
-    npz_file = np.load(motion_location + file_name, allow_pickle=True)
+    npz_file = np.load(os.path.join(motion_location, file_name), allow_pickle=True)
     motion = npz_file['arr_0'].item()['motion'] # shape:[batch_size,25,6,60]
 
     motion = torch.from_numpy(np.array(motion))
@@ -429,4 +429,5 @@ if __name__ == '__main__':
     
     metrics = ['Root AVE', 'Root AE', 'Joint AVE', 'Joint AE', 'PFC']
     for metric in metrics:
+        print('metric:', metric)
         results_from_json(file_path, metric)
