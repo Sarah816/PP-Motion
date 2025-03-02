@@ -373,6 +373,8 @@ class MotionCritic(nn.Module):
         super().__init__()
         self.device = device
         self.mlp = MLP(in_features= 25*dim_rep, hidden_features=2*dim_rep, out_features=1)
+        self.phys_mlp = MLP(in_features= 25*dim_rep, hidden_features=2*dim_rep, out_features=1)
+        
 
         self.dstran = DSTformer(dim_in, dim_out, dim_feat, dim_rep,
                  depth, num_heads, mlp_ratio, 
@@ -396,10 +398,14 @@ class MotionCritic(nn.Module):
         
         critic_better = self.mlp(encode_better)
         critic_worse = self.mlp(encode_worse)
+        
+        phys_better = self.phys_mlp(encode_better)
+        phys_worse = self.phys_mlp(encode_worse)
 
         critic = torch.cat((critic_better, critic_worse), dim=1)
+        phys_score = torch.cat((phys_better, phys_worse), dim=1)
         
-        return critic
+        return critic, phys_score
     
     def clipped_critic(self, motion):
         

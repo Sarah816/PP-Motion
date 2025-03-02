@@ -6,7 +6,8 @@ os.environ['WANDB__EXECUTABLE'] =  '/home/zhaosh/miniconda3/envs/mocritic/bin/py
 os.environ['WANDB_DIR'] = PROJ_DIR + '/wandb/'
 os.environ['WANDB_CACHE_DIR'] = PROJ_DIR + '/wandb/.cache/'
 os.environ['WANDB_CONFIG_DIR'] = PROJ_DIR + '/wandb/.config/'
-
+import numpy as np
+import time
 
 from lib.model.critic import MotionCritic
 
@@ -21,7 +22,8 @@ import argparse
 import wandb
 
 # this might be useful
-torch.manual_seed(3407)
+# torch.manual_seed(3407)
+
 checkpoint_interval = 40
 
 def parse_args():
@@ -134,11 +136,13 @@ def get_dataset_file(dataset):
     return train_pth_name, val_pth_name
 
 def create_data_loaders(dataset, batch_size):
-    train_pth_name, val_pth_name = get_dataset_file(dataset)
-    train_pth = os.path.join(PROJ_DIR, 'data/'+ train_pth_name)
-    val_pth = os.path.join(PROJ_DIR, 'data/'+ val_pth_name)
-    train_motion_pairs = motion_pair_dataset(motion_pair_list_name=train_pth)
-    val_motion_pairs = motion_pair_dataset(motion_pair_list_name=val_pth)
+    
+    
+    # train_pth_name, val_pth_name = get_dataset_file(dataset)
+    # train_pth = os.path.join(PROJ_DIR, 'data/'+ train_pth_name)
+    # val_pth = os.path.join(PROJ_DIR, 'data/'+ val_pth_name)
+    train_motion_pairs = motion_pair_dataset(dataset_name=f'{dataset}train')
+    val_motion_pairs = motion_pair_dataset(dataset_name=f'{dataset}val')
     
     # Instantiate DataLoader
     train_loader = DataLoader(train_motion_pairs, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2)
@@ -147,8 +151,17 @@ def create_data_loaders(dataset, batch_size):
 
 
 class motion_pair_dataset(Dataset):
-    def __init__(self, motion_pair_list_name):
-        self.data = torch.load(motion_pair_list_name)
+    def __init__(self, dataset_name):
+        motion_dataset_pth = os.path.join(PROJ_DIR, 'data/'+ dataset_name + '_shuffle.pth')
+        self.data = torch.load(motion_dataset_pth)
+        mpjpe_better_pth = os.path.join(PROJ_DIR, 'data/'+ dataset_name + '_mpjpe_better.npy')
+        mpjpe_better = np.load(mpjpe_better_pth)
+        mpjpe_worse_pth = os.path.join(PROJ_DIR, 'data/'+ dataset_name + '_mpjpe_worse.npy')
+        mpjpe_worse = np.load(mpjpe_worse_pth)
+        for i in range(len(self.data)):
+            self.data[i]['mpjpe_better'] = mpjpe_better[i // 3]
+            self.data[i]['mpjpe_worse'] = mpjpe_worse[i]
+        
 
     def __getitem__(self, index):
         return self.data[index]
@@ -157,8 +170,12 @@ class motion_pair_dataset(Dataset):
         return len(self.data)
 
 
-def init_seeds(seed, cuda_deterministic=True):
+def init_seeds(seed, cuda_deterministic=True, multi_gpu=False):
+    print(f'init seed {seed}, cuda_deterministic {cuda_deterministic}, multi_gpu {multi_gpu}')
     torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    if multi_gpu:
+        torch.cuda.manual_seed_all(seed)
     if cuda_deterministic:  # slower, more reproducible
        cudnn.deterministic = True
        cudnn.benchmark = False
@@ -167,16 +184,22 @@ def init_seeds(seed, cuda_deterministic=True):
        cudnn.benchmark = True
 
 
-def loss_func(critic):
+def loss_func(critic, phys_score, mpjpe_gt):
+    # critic: torch (batch_size, 2), phys_score: torch (batch_size, 2), mpjpe_gt: torch (batch_size, 2)
     
     target = torch.zeros(critic.shape[0], dtype=torch.long).to(critic.device)
-    loss_list = F.cross_entropy(critic, target, reduction='none')
-    loss = torch.mean(loss_list)
+    loss_critic_list = F.cross_entropy(critic, target, reduction='none')
+    loss_critic = torch.mean(loss_critic_list) # [64,]
     
     critic_diff = critic[:, 0] - critic[:, 1]
     acc = torch.mean((critic_diff > 0).clone().detach().float())
     
-    return loss, loss_list, acc
+    loss_phys = F.mse_loss(phys_score, mpjpe_gt)
+    loss_phys = 0.0005 * loss_phys
+    
+    loss_total = loss_critic + loss_phys
+    
+    return loss_total, acc, loss_critic, loss_phys
 
 
 def create_warmup_scheduler(warmup_type):
@@ -224,6 +247,8 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, gpu_indices))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
+    init_seeds(3407, multi_gpu=gpu_number > 1)
+    
     batch_size = args.batch_size
     lr = args.learning_rate
     # lr = 1e-3 * (batch_size/32) # parallel changing
@@ -269,21 +294,27 @@ if __name__ == '__main__':
         # 46740 data pairs in total; batch_size = 64; steps = 46740/64 = 730
         # log every 40 steps, 730/40 = 18 logs per epoch
         for step, batch_data in enumerate(train_loader):
+            # time_start = time.time()
             # Move batch data to GPU
             # Move each tensor in the dictionary to GPU
             model.train()
 
-            batch_data = {key: value.cuda(device=device) for key, value in batch_data.items()} # keys: 'motion_better', 'motion_worse'
-            # batch_data['motion_better'] shape: (batch_size, 60, 25, 3)
+            # batch_data = {key: value.cuda(device=device) for key, value in batch_data.items()} # keys: 'motion_better', 'motion_worse'
+            # batch_data['motion_better'] shape: torch (batch_size, 60, 25, 3)
+            # batch_data['mpjpe_better'] shape: torch (batch_size, 64)
+            batch_motion = {
+                key: batch_data[key].cuda(device=device)
+                for key in ['motion_better', 'motion_worse'] if key in batch_data
+            }
+            batch_mpjpe_gt = torch.stack([batch_data['mpjpe_better'], batch_data['mpjpe_worse']], dim=1).cuda(device=device)
 
             # Zero the gradients
             optimizer.zero_grad()
 
             # Forward pass
-            critic = model(batch_data) # (batch_size, 2)
-
+            critic, phys_score = model(batch_motion) # torch (batch_size, 2), (batch_size, 2)
             # Compute the loss
-            loss, _, acc = criterion(critic)
+            loss, acc, loss_critic, loss_phys = criterion(critic, phys_score, batch_mpjpe_gt)
 
             # Backward pass and optimization
             loss.backward()
@@ -292,17 +323,22 @@ if __name__ == '__main__':
             if step % 40 == 0:
                 # Log metrics to WandB
                 if not args.debug:
-                    wandb.log({"Loss": loss.item(), "Accuracy": acc.item(), "lr": optimizer.param_groups[0]['lr']})
+                    wandb.log({"Loss": loss.item(), "Loss_critic": loss_critic.item(), "Loss_phys": loss_phys.item(), "Accuracy": acc.item(), "lr": optimizer.param_groups[0]['lr']})
 
                 # Optionally, print training metrics
                 print(f'Epoch {epoch + 1}, Step: {step}, Loss: {loss.item()}, Accuracy: {acc.item()}')
                 # Remove batch_data from GPU to save memory
 
-            batch_data = {key: value.detach().cpu() for key, value in batch_data.items()}
+            batch_motion = {key: value.detach().cpu() for key, value in batch_motion.items()}
+            batch_mpjpe_gt = batch_mpjpe_gt.detach().cpu()
+            # time_end = time.time()
+            # print(f'Step Time: {time_end - time_start}')
 
 
         # evaluate the model on a epoch basis
         average_val_loss = 0.0
+        average_critic_loss = 0.0
+        average_phys_loss = 0.0
         average_val_acc = 0.0
         total_val_samples = 0
 
@@ -316,27 +352,40 @@ if __name__ == '__main__':
         with torch.no_grad():
             model.eval()
 
-            for val_batch_data in val_loader:
-                val_batch_data = {key: value.cuda(device=device) for key, value in val_batch_data.items()}
-                val_loss, _, val_acc = criterion(model(val_batch_data))
+            for batch_data in val_loader:
+                batch_motion = {
+                    key: batch_data[key].cuda(device=device)
+                    for key in ['motion_better', 'motion_worse'] if key in batch_data
+                }
+                batch_mpjpe_gt = torch.stack([batch_data['mpjpe_better'], batch_data['mpjpe_worse']], dim=1).cuda(device=device)
+                # val_batch_data = {key: value.cuda(device=device) for key, value in val_batch_data.items()}
+                critic, phys_score = model(batch_motion)
+                loss, acc, critic_loss, phys_loss = criterion(critic, phys_score, batch_mpjpe_gt)
 
-                val_batch_size = len(val_batch_data)
-                average_val_acc += val_acc.item() * val_batch_size
-                average_val_loss += val_loss.item() * val_batch_size
-                total_val_samples += val_batch_size
-                val_batch_data = {key: value.detach().cpu() for key, value in val_batch_data.items()}
+                batch_size = len(batch_data)
+                average_val_acc += acc.item() * batch_size
+                average_val_loss += loss.item() * batch_size
+                average_critic_loss += critic_loss.item() * batch_size
+                average_phys_loss += phys_loss.item() * batch_size
+                total_val_samples += batch_size
+                batch_motion = {key: value.detach().cpu() for key, value in batch_motion.items()}
+                batch_mpjpe_gt = batch_mpjpe_gt.detach().cpu()
+
+                # val_batch_data = {key: value.detach().cpu() for key, value in val_batch_data.items()}
                 # del val_batch_data
                 torch.cuda.empty_cache()
 
             # Calculate average loss and accuracy
             average_val_loss = average_val_loss / total_val_samples
             average_val_acc = average_val_acc / total_val_samples
+            average_critic_loss = average_critic_loss / total_val_samples
+            average_phys_loss = average_phys_loss / total_val_samples
             
             if not args.debug:
-                wandb.log({"val_Loss": average_val_loss, "val_Accuracy": average_val_acc})
+                wandb.log({"val_Loss": average_val_loss, "val_Accuracy": average_val_acc, "val_critic_Loss": average_critic_loss, "val_phys_Loss": average_phys_loss})
 
             # Optionally, print training metrics
-            print(f'Epoch {epoch + 1}, val_Loss: {average_val_loss}, val_Accuracy: {average_val_acc}')
+            print(f'Epoch {epoch + 1}, val_Loss: {average_val_loss}, val_critic_Loss: {average_critic_loss}, val_phys_Loss: {average_phys_loss}, val_Accuracy: {average_val_acc}')
 
 
         # Save the best model based on validation accuracy
