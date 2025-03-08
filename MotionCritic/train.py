@@ -21,7 +21,7 @@ import argparse
 import wandb
 
 # this might be useful
-torch.manual_seed(3407)
+# torch.manual_seed(3407)
 checkpoint_interval = 40
 
 def parse_args():
@@ -73,6 +73,9 @@ def parse_args():
 
     parser.add_argument('--debug', action='store_true',
                         help='debug mode, no wandb')
+    
+    parser.add_argument('--seed', type=int, default=0,
+                        help='Seed (default: 0)')
 
 
 
@@ -134,11 +137,11 @@ def get_dataset_file(dataset):
     return train_pth_name, val_pth_name
 
 def create_data_loaders(dataset, batch_size):
-    train_pth_name, val_pth_name = get_dataset_file(dataset)
-    train_pth = os.path.join(PROJ_DIR, 'data/'+ train_pth_name)
-    val_pth = os.path.join(PROJ_DIR, 'data/'+ val_pth_name)
-    train_motion_pairs = motion_pair_dataset(motion_pair_list_name=train_pth)
-    val_motion_pairs = motion_pair_dataset(motion_pair_list_name=val_pth)
+    # train_pth_name, val_pth_name = get_dataset_file(dataset)
+    # train_pth = os.path.join(PROJ_DIR, 'data/'+ train_pth_name)
+    # val_pth = os.path.join(PROJ_DIR, 'data/'+ val_pth_name)
+    train_motion_pairs = motion_pair_dataset(dataset_name=f'{dataset}train')
+    val_motion_pairs = motion_pair_dataset(dataset_name=f'{dataset}val')
     
     # Instantiate DataLoader
     train_loader = DataLoader(train_motion_pairs, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2)
@@ -147,8 +150,9 @@ def create_data_loaders(dataset, batch_size):
 
 
 class motion_pair_dataset(Dataset):
-    def __init__(self, motion_pair_list_name):
-        self.data = torch.load(motion_pair_list_name)
+    def __init__(self, dataset_name):
+        motion_dataset_pth = os.path.join(PROJ_DIR, 'data/'+ dataset_name + '_shuffle.pth')
+        self.data = torch.load(motion_dataset_pth)
 
     def __getitem__(self, index):
         return self.data[index]
@@ -157,8 +161,12 @@ class motion_pair_dataset(Dataset):
         return len(self.data)
 
 
-def init_seeds(seed, cuda_deterministic=True):
+def init_seeds(seed, cuda_deterministic=True, multi_gpu=False):
+    print(f'init seed {seed}, cuda_deterministic {cuda_deterministic}, multi_gpu {multi_gpu}')
     torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    if multi_gpu:
+        torch.cuda.manual_seed_all(seed)
     if cuda_deterministic:  # slower, more reproducible
        cudnn.deterministic = True
        cudnn.benchmark = False
@@ -223,6 +231,8 @@ if __name__ == '__main__':
     gpu_number = len(gpu_indices)
     os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, gpu_indices))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    init_seeds(args.seed, multi_gpu=gpu_number > 1)
     
     batch_size = args.batch_size
     lr = args.learning_rate
