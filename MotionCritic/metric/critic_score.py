@@ -15,13 +15,12 @@ from sklearn.metrics import average_precision_score, brier_score_loss, accuracy_
 import gc
 import pytorch_warmup as warmup
 import argparse
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import numpy as np
 
 from scipy.stats import wilcoxon
 
-# val_pth_name = "mlist_mdmfull_valshuffle.pth"
-val_pth_name = "mlist_flame.pth"
+val_pth_name = "mdmval_shuffle.pth"
 
 
 device = torch.device('cuda:0')
@@ -31,8 +30,8 @@ model = torch.nn.DataParallel(model)
 model.to(device)
 
 # load pretrained model
-checkpoint = torch.load(os.path.join(PROJ_DIR,f'pretrained/motioncritic_pre.pth'), map_location=device)
-    # Load the model and optimizer
+checkpoint = torch.load(os.path.join(PROJ_DIR,f'pretrained/critic_mdmfull_seed3407_best_checkpoint.pth'), map_location=device)
+# Load the model and optimizer
 model.load_state_dict(checkpoint['model_state_dict'])
 
 
@@ -112,8 +111,8 @@ for val_batch_data in val_loader:
     scores.detach().cpu()
 
 all_scores = torch.cat(all_scores, dim=0)
-print(f"all_scores' shape {all_scores.shape}")
-print(all_scores[:5])
+# print(f"all_scores' shape {all_scores.shape}")
+# print(all_scores[:5])
 
 
 metric_func(all_scores)
