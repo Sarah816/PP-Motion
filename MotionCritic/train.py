@@ -188,6 +188,7 @@ def loss_func(critic, phys_score, mpjpe_gt):
     # critic: torch (batch_size, 2), phys_score: torch (batch_size, 2), mpjpe_gt: torch (batch_size, 2)
     
     target = torch.zeros(critic.shape[0], dtype=torch.long).to(critic.device)
+    # loss_critic_list = F.cross_entropy(critic, target, reduction='none', label_smoothing=0.1)
     loss_critic_list = F.cross_entropy(critic, target, reduction='none')
     loss_critic = torch.mean(loss_critic_list) # [64,]
     
@@ -199,7 +200,9 @@ def loss_func(critic, phys_score, mpjpe_gt):
     
     loss_total = loss_critic + loss_phys
     
-    return loss_total, acc, loss_critic, loss_phys
+    phys_error = torch.abs(phys_score - mpjpe_gt).mean()
+    
+    return loss_total, loss_critic, loss_phys, acc, phys_error
 
 
 def create_warmup_scheduler(warmup_type):
@@ -314,7 +317,7 @@ if __name__ == '__main__':
             # Forward pass
             critic, phys_score = model(batch_motion) # torch (batch_size, 2), (batch_size, 2)
             # Compute the loss
-            loss, acc, loss_critic, loss_phys = criterion(critic, phys_score, batch_mpjpe_gt)
+            loss, loss_critic, loss_phys, acc, phys_error = criterion(critic, phys_score, batch_mpjpe_gt)
 
             # Backward pass and optimization
             loss.backward()
@@ -323,10 +326,10 @@ if __name__ == '__main__':
             if step % 40 == 0:
                 # Log metrics to WandB
                 if not args.debug:
-                    wandb.log({"Loss": loss.item(), "Loss_critic": loss_critic.item(), "Loss_phys": loss_phys.item(), "Accuracy": acc.item(), "lr": optimizer.param_groups[0]['lr']})
+                    wandb.log({"Loss": loss.item(), "Loss_critic": loss_critic.item(), "Loss_phys": loss_phys.item(), "Accuracy": acc.item(), "Phys error": phys_error.item(), "lr": optimizer.param_groups[0]['lr']})
 
                 # Optionally, print training metrics
-                print(f'Epoch {epoch + 1}, Step: {step}, Loss: {loss.item()}, Accuracy: {acc.item()}')
+                print(f'Epoch {epoch + 1}, Step: {step}, Loss: {loss.item()}, Accuracy: {acc.item()}, Phys error: {phys_error.item()}')
                 # Remove batch_data from GPU to save memory
 
             batch_motion = {key: value.detach().cpu() for key, value in batch_motion.items()}
@@ -340,6 +343,7 @@ if __name__ == '__main__':
         average_critic_loss = 0.0
         average_phys_loss = 0.0
         average_val_acc = 0.0
+        average_phys_error = 0.0
         total_val_samples = 0
 
         if lr_decay:
@@ -360,10 +364,11 @@ if __name__ == '__main__':
                 batch_mpjpe_gt = torch.stack([batch_data['mpjpe_better'], batch_data['mpjpe_worse']], dim=1).cuda(device=device)
                 # val_batch_data = {key: value.cuda(device=device) for key, value in val_batch_data.items()}
                 critic, phys_score = model(batch_motion)
-                loss, acc, critic_loss, phys_loss = criterion(critic, phys_score, batch_mpjpe_gt)
+                loss, critic_loss, phys_loss, acc, phys_error = criterion(critic, phys_score, batch_mpjpe_gt)
 
                 batch_size = len(batch_data)
                 average_val_acc += acc.item() * batch_size
+                average_phys_error += phys_error.item() * batch_size
                 average_val_loss += loss.item() * batch_size
                 average_critic_loss += critic_loss.item() * batch_size
                 average_phys_loss += phys_loss.item() * batch_size
@@ -380,12 +385,13 @@ if __name__ == '__main__':
             average_val_acc = average_val_acc / total_val_samples
             average_critic_loss = average_critic_loss / total_val_samples
             average_phys_loss = average_phys_loss / total_val_samples
+            average_phys_error = average_phys_error / total_val_samples
             
             if not args.debug:
-                wandb.log({"val_Loss": average_val_loss, "val_Accuracy": average_val_acc, "val_critic_Loss": average_critic_loss, "val_phys_Loss": average_phys_loss})
+                wandb.log({"val_Phys_error": average_phys_error, "val_Accuracy": average_val_acc, "val_Loss": average_val_loss, "val_critic_Loss": average_critic_loss, "val_phys_Loss": average_phys_loss})
 
             # Optionally, print training metrics
-            print(f'Epoch {epoch + 1}, val_Loss: {average_val_loss}, val_critic_Loss: {average_critic_loss}, val_phys_Loss: {average_phys_loss}, val_Accuracy: {average_val_acc}')
+            print(f'Epoch {epoch + 1}, val_Loss: {average_val_loss}, val_critic_Loss: {average_critic_loss}, val_phys_Loss: {average_phys_loss}, val_Accuracy: {average_val_acc}, val_Phys_error: {average_phys_error}')
 
 
         # Save the best model based on validation accuracy
@@ -399,6 +405,7 @@ if __name__ == '__main__':
                 'optimizer_state_dict': optimizer.state_dict(),
                 'best_accuracy': best_accuracy,
                 'accuracy': acc.item(),
+                'phys_error': phys_error.item(),
             }, best_checkpoint_path)
             print(f"Best model saved at {best_checkpoint_path}")
 
