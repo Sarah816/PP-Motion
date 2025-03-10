@@ -1,0 +1,2 @@
+# python train.py --gpu_indices 2,3 --exp_name critic_mdm_org_lr2e-3_batch64 --dataset mdmfull_shuffle --save_latest --lr_decay --big_model --batch_size 64
+python train.py --gpu_indices 4 --exp_name critic_mdm_lr2e-3_batch64 --dataset mdmfull_shuffle --save_latest --lr_decay --big_model --batch_size 64

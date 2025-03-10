@@ -65,6 +65,9 @@ parser.add_argument('--big_model', action='store_true',
 parser.add_argument('--origin_model', action='store_true',
                     help='use not sigmoid')
 
+parser.add_argument('--debug', action='store_true',
+                    help='use not sigmoid')
+
 # Parse the arguments
 args = parser.parse_args()
 
@@ -74,7 +77,8 @@ gpu_number = len(gpu_indices)
 
 
 batch_size = args.batch_size
-lr = 2e-5 * (batch_size/32) # parallel changing
+lr = 1e-3 * (batch_size/32) # parallel changing
+# lr = 2e-5 * (batch_size/32) # parallel changing
 
 print(f"training on gpu {gpu_indices}, training starting with batchsize {batch_size}, lr {lr}")
 
@@ -87,6 +91,8 @@ lr_warmup = args.lr_warmup
 lr_decay = args.lr_decay
 big_model = args.big_model
 origin_model = args.origin_model
+
+print('lr warmup', lr_warmup, '; lr decay', lr_decay)
 
 
 
@@ -179,18 +185,18 @@ def loss_func(critic):
     return loss, loss_list, acc
 
 
-
-wandb.init(project="preexp", name=exp_name, resume=False)
-
-
+if not args.debug:
+    wandb.init(project="mocritic", name=exp_name, resume=False)
 
 
 
-checkpoint_interval = 40  # Save checkpoint every 100 epochs
+
+
+checkpoint_interval = 100  # Save checkpoint every 100 epochs
 
 # Instantiate your dataset
-train_pth = os.path.join(PROJ_DIR, 'datasets/'+ train_pth_name)
-val_pth = os.path.join(PROJ_DIR, 'datasets/'+ val_pth_name)
+train_pth = os.path.join(PROJ_DIR, 'data/'+ train_pth_name)
+val_pth = os.path.join(PROJ_DIR, 'data/'+ val_pth_name)
 train_motion_pairs = motion_pair_dataset(motion_pair_list_name=train_pth)
 val_motion_pairs = motion_pair_dataset(motion_pair_list_name=val_pth)
 
@@ -216,14 +222,13 @@ else:
 criterion = loss_func  # Assuming your loss_func is already defined
 # Create your optimizer
 
-
 optimizer = torch.optim.Adam(model.parameters(), lr=lr, 
                              betas=(0.9, 0.999), weight_decay=1e-4)
 
 # optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-final_lr = 1e-5
-initial_lr = 5e-4
+# final_lr = 1e-5
+# initial_lr = 5e-4
 warmup_type = "radam" 
 
 # lr scheduling
@@ -231,15 +236,17 @@ warmup_type = "radam"
 gamma = 0.995
 scheduler = ExponentialLR(optimizer, gamma)
 
+# if lr_warmup:
+# if warmup_type == 'linear':
+#         warmup_scheduler = warmup.UntunedLinearWarmup(optimizer)
+# elif warmup_type == 'exponential':
+#         warmup_scheduler = warmup.UntunedExponentialWarmup(optimizer)
+# elif warmup_type == 'radam':
+#         warmup_scheduler = warmup.RAdamWarmup(optimizer)
+# elif warmup_type == 'none':
+#         warmup_scheduler = warmup.LinearWarmup(optimizer, 1)
 
-if warmup_type == 'linear':
-        warmup_scheduler = warmup.UntunedLinearWarmup(optimizer)
-elif warmup_type == 'exponential':
-        warmup_scheduler = warmup.UntunedExponentialWarmup(optimizer)
-elif warmup_type == 'radam':
-        warmup_scheduler = warmup.RAdamWarmup(optimizer)
-elif warmup_type == 'none':
-        warmup_scheduler = warmup.LinearWarmup(optimizer, 1)
+print('create optimizer, starting with lr=', optimizer.param_groups[0]['lr'])
 
 
 # Load the model if load_model_path is provided
@@ -259,6 +266,9 @@ else:
 
 start_epoch = 0
 best_accuracy = 0
+
+output_folder = f"output/{exp_name}"
+os.makedirs(output_folder, exist_ok=True)
 
 # Continue training from the loaded checkpoint
 for epoch in range(start_epoch, num_epochs):
@@ -285,7 +295,8 @@ for epoch in range(start_epoch, num_epochs):
         
         if step % 40 == 0:
             # Log metrics to WandB
-            wandb.log({"Loss": loss.item(), "Accuracy": acc.item()})
+            if not args.debug:
+                wandb.log({"Loss": loss.item(), "Accuracy": acc.item(), "lr": optimizer.param_groups[0]['lr']})
 
             # Optionally, print training metrics
             print(f'Epoch {epoch + 1}, Loss: {loss.item()}, Accuracy: {acc.item()}')
@@ -327,7 +338,8 @@ for epoch in range(start_epoch, num_epochs):
         average_val_loss = average_val_loss / total_val_samples
         average_val_acc = average_val_acc / total_val_samples
         
-        wandb.log({"val_Loss": average_val_loss, "val_Accuracy": average_val_acc, "lr": optimizer.param_groups[0]['lr']})
+        if not args.debug:
+            wandb.log({"val_Loss": average_val_loss, "val_Accuracy": average_val_acc})
 
          # Optionally, print training metrics
         print(f'Epoch {epoch + 1}, val_Loss: {average_val_loss}, val_Accuracy: {average_val_acc}, lr: {optimizer.param_groups[0]["lr"]}')
@@ -337,7 +349,7 @@ for epoch in range(start_epoch, num_epochs):
     if average_val_acc > best_accuracy:
         best_accuracy = average_val_acc
         best_model_state = model.state_dict()
-        best_checkpoint_path = f"{exp_name}_best_checkpoint.pth"
+        best_checkpoint_path = f"output/{exp_name}/best_checkpoint.pth"
         torch.save({
             'epoch': epoch + 1,
             'model_state_dict': best_model_state,
@@ -350,7 +362,7 @@ for epoch in range(start_epoch, num_epochs):
     if save_checkpoint:
         # Save checkpoint every k epochs
         if (epoch + 1) % checkpoint_interval == 0:
-            checkpoint_path = f"{exp_name}_checkpoint_epoch_{epoch + 1}.pth"
+            checkpoint_path = f"output/{exp_name}/checkpoint_epoch_{epoch + 1}.pth"
             torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
@@ -363,7 +375,7 @@ for epoch in range(start_epoch, num_epochs):
 
     if save_latest:
         # Save latest checkpoint
-        checkpoint_path = f"{exp_name}_checkpoint_latest.pth"
+        checkpoint_path = f"output/{exp_name}/checkpoint_latest.pth"
         torch.save({
             'epoch': epoch + 1,
             'model_state_dict': model.state_dict(),
