@@ -26,6 +26,11 @@ import wandb
 
 checkpoint_interval = 40
 
+# mpjpe = np.load(os.path.join(PROJ_DIR, 'data/mpjpe/mdmtrain_mpjpe_worse.npy'))
+# mpjpe = mpjpe.astype(np.float32)
+# np.save(os.path.join(PROJ_DIR, 'data/mpjpe/mdmtrain_mpjpe_worse.npy'), mpjpe)
+# exit(0)
+
 def parse_args():
 
     # Initialize argparse
@@ -154,9 +159,9 @@ class motion_pair_dataset(Dataset):
     def __init__(self, dataset_name):
         motion_dataset_pth = os.path.join(PROJ_DIR, 'data/'+ dataset_name + '_shuffle.pth')
         self.data = torch.load(motion_dataset_pth)
-        mpjpe_better_pth = os.path.join(PROJ_DIR, 'data/'+ dataset_name + '_mpjpe_better.npy')
+        mpjpe_better_pth = os.path.join(PROJ_DIR, 'data/mpjpe/'+ dataset_name + '_mpjpe_better.npy')
         mpjpe_better = np.load(mpjpe_better_pth)
-        mpjpe_worse_pth = os.path.join(PROJ_DIR, 'data/'+ dataset_name + '_mpjpe_worse.npy')
+        mpjpe_worse_pth = os.path.join(PROJ_DIR, 'data/mpjpe/'+ dataset_name + '_mpjpe_worse.npy')
         mpjpe_worse = np.load(mpjpe_worse_pth)
         for i in range(len(self.data)):
             self.data[i]['mpjpe_better'] = mpjpe_better[i // 3]
