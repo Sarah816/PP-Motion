@@ -22,11 +22,13 @@ import argparse
 import wandb
 
 # this might be useful
-# torch.manual_seed(3407)
+torch.manual_seed(3407)
 
 checkpoint_interval = 40
 
-# mpjpe = np.load(os.path.join(PROJ_DIR, 'data/mpjpe/mdmtrain_mpjpe_worse.npy'))
+# mpjpe = np.load(os.path.join(PROJ_DIR, 'data/mpjpe/mdmtrain_mpjpe_better.npy'))
+# print(mpjpe.shape[0])
+# exit(0)
 # mpjpe = mpjpe.astype(np.float32)
 # np.save(os.path.join(PROJ_DIR, 'data/mpjpe/mdmtrain_mpjpe_worse.npy'), mpjpe)
 # exit(0)
@@ -164,8 +166,9 @@ class motion_pair_dataset(Dataset):
         mpjpe_worse_pth = os.path.join(PROJ_DIR, 'data/mpjpe/'+ dataset_name + '_mpjpe_worse.npy')
         mpjpe_worse = np.load(mpjpe_worse_pth)
         for i in range(len(self.data)):
-            self.data[i]['mpjpe_better'] = mpjpe_better[i // 3]
+            self.data[i]['mpjpe_better'] = mpjpe_better[i]
             self.data[i]['mpjpe_worse'] = mpjpe_worse[i]
+        print("Dataset length: ", len(self.data))
         
 
     def __getitem__(self, index):
@@ -255,7 +258,7 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, gpu_indices))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    init_seeds(3407, multi_gpu=gpu_number > 1)
+    # init_seeds(3407, multi_gpu=gpu_number > 1)
     
     batch_size = args.batch_size
     lr = args.learning_rate
@@ -285,6 +288,9 @@ if __name__ == '__main__':
     
     start_epoch = 0
     best_accuracy = 0
+    
+    output_folder = f"output/{exp_name}"
+    os.makedirs(output_folder, exist_ok=True)
     
     # Load the model if load_model_path is provided
     if load_model_path:
@@ -403,7 +409,7 @@ if __name__ == '__main__':
         if average_val_acc > best_accuracy:
             best_accuracy = average_val_acc
             best_model_state = model.state_dict()
-            best_checkpoint_path = f"{exp_name}_best_checkpoint.pth"
+            best_checkpoint_path = f"{output_folder}/best_checkpoint.pth"
             torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': best_model_state,
@@ -417,7 +423,7 @@ if __name__ == '__main__':
         if save_checkpoint:
             # Save checkpoint every k epochs
             if (epoch + 1) % checkpoint_interval == 0:
-                checkpoint_path = f"{exp_name}_checkpoint_epoch_{epoch + 1}.pth"
+                checkpoint_path = f"{output_folder}/checkpoint_epoch_{epoch + 1}.pth"
                 torch.save({
                     'epoch': epoch + 1,
                     'model_state_dict': model.state_dict(),
@@ -430,7 +436,7 @@ if __name__ == '__main__':
 
         if save_latest:
             # Save latest checkpoint
-            checkpoint_path = f"{exp_name}_checkpoint_latest.pth"
+            checkpoint_path = f"{output_folder}/checkpoint_latest.pth"
             torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
