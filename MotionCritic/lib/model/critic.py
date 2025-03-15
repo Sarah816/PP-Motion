@@ -365,15 +365,17 @@ class DSTformer(nn.Module):
 
 
 class MotionCritic(nn.Module):
-    def __init__(self, device='cpu', dim_in=3, dim_out=3, dim_feat=256, dim_rep=512,
+    def __init__(self, enable_phys, device='cpu', dim_in=3, dim_out=3, dim_feat=256, dim_rep=512,
                  depth=5, num_heads=8, mlp_ratio=4, 
                  num_joints=25, maxlen=243, 
                  qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, att_fuse=True):
         
         super().__init__()
         self.device = device
+        self.enable_phys = enable_phys
         self.mlp = MLP(in_features= 25*dim_rep, hidden_features=2*dim_rep, out_features=1)
-        self.phys_mlp = MLP(in_features= 25*dim_rep, hidden_features=2*dim_rep, out_features=1)
+        if enable_phys:
+            self.phys_mlp = MLP(in_features= 25*dim_rep, hidden_features=2*dim_rep, out_features=1)
         
 
         self.dstran = DSTformer(dim_in, dim_out, dim_feat, dim_rep,
@@ -398,14 +400,15 @@ class MotionCritic(nn.Module):
         
         critic_better = self.mlp(encode_better)
         critic_worse = self.mlp(encode_worse)
-        
-        phys_better = self.phys_mlp(encode_better)
-        phys_worse = self.phys_mlp(encode_worse)
-
         critic = torch.cat((critic_better, critic_worse), dim=1)
-        phys_score = torch.cat((phys_better, phys_worse), dim=1)
         
-        return critic, phys_score
+        if self.enable_phys:
+            phys_better = self.phys_mlp(encode_better)
+            phys_worse = self.phys_mlp(encode_worse)
+            phys_score = torch.cat((phys_better, phys_worse), dim=1)
+            return critic, phys_score
+        else:
+            return critic
     
     def clipped_critic(self, motion):
         

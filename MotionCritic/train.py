@@ -82,6 +82,9 @@ def parse_args():
 
     parser.add_argument('--debug', action='store_true',
                         help='debug mode, no wandb')
+    
+    parser.add_argument('--enable_phys', action='store_true',
+                        help='enabel physics model')
 
 
 
@@ -95,8 +98,8 @@ def create_data_loaders(dataset, batch_size):
     # train_pth_name, val_pth_name = get_dataset_file(dataset)
     # train_pth = os.path.join(PROJ_DIR, 'data/'+ train_pth_name)
     # val_pth = os.path.join(PROJ_DIR, 'data/'+ val_pth_name)
-    train_motion_pairs = motion_pair_dataset(dataset_name=f'mlist_mdmfull_train_{dataset}.pth')
-    val_motion_pairs = motion_pair_dataset(dataset_name="mlist_mdmfull_val.pth")
+    train_motion_pairs = motion_pair_dataset(dataset_name="mdmtrain", dataset_type=dataset)
+    val_motion_pairs = motion_pair_dataset(dataset_name="mdmval", dataset_type=dataset)
     
     # Instantiate DataLoader
     train_loader = DataLoader(train_motion_pairs, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2)
@@ -105,17 +108,24 @@ def create_data_loaders(dataset, batch_size):
 
 
 class motion_pair_dataset(Dataset):
-    def __init__(self, dataset_name):
-        motion_dataset_pth = os.path.join(PROJ_DIR, 'data/'+ dataset_name)
+    def __init__(self, dataset_name, dataset_type):
+        if dataset_name == "mdmtrain":
+            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/mlist_{dataset_name}_{dataset_type}.pth')
+        elif dataset_name == "mdmval":
+            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/mlist_{dataset_name}.pth')
+        else:
+            print("Wrong dataset name!")
+            exit(0)
         self.data = torch.load(motion_dataset_pth)
-        mpjpe_better_pth = os.path.join(PROJ_DIR, 'data/mpjpe/'+ dataset_name + '_mpjpe_better.npy')
-        mpjpe_better = np.load(mpjpe_better_pth)
-        mpjpe_worse_pth = os.path.join(PROJ_DIR, 'data/mpjpe/'+ dataset_name + '_mpjpe_worse.npy')
-        mpjpe_worse = np.load(mpjpe_worse_pth)
-        for i in range(len(self.data)):
-            self.data[i]['mpjpe_better'] = mpjpe_better[i]
-            self.data[i]['mpjpe_worse'] = mpjpe_worse[i]
-        print("Dataset length: ", len(self.data))
+        if enable_phys:
+            mpjpe_better_pth = os.path.join(PROJ_DIR, 'data/mpjpe/'+ dataset_name + '_mpjpe_better.npy')
+            mpjpe_better = np.load(mpjpe_better_pth)
+            mpjpe_worse_pth = os.path.join(PROJ_DIR, 'data/mpjpe/'+ dataset_name + '_mpjpe_worse.npy')
+            mpjpe_worse = np.load(mpjpe_worse_pth)
+            for i in range(len(self.data)):
+                self.data[i]['mpjpe_better'] = mpjpe_better[i]
+                self.data[i]['mpjpe_worse'] = mpjpe_worse[i]
+        print(f"Dataset {dataset_name} length: ", len(self.data))
         
 
     def __getitem__(self, index):
@@ -139,7 +149,7 @@ def init_seeds(seed, cuda_deterministic=True, multi_gpu=False):
        cudnn.benchmark = True
 
 
-def loss_func(critic, phys_score, mpjpe_gt):
+def loss_func_phys(critic, phys_score, mpjpe_gt):
     # critic: torch (batch_size, 2), phys_score: torch (batch_size, 2), mpjpe_gt: torch (batch_size, 2)
     
     target = torch.zeros(critic.shape[0], dtype=torch.long).to(critic.device)
@@ -157,7 +167,18 @@ def loss_func(critic, phys_score, mpjpe_gt):
     
     phys_error = torch.abs(phys_score - mpjpe_gt).mean()
     
-    return loss_total, loss_critic, loss_phys, acc, phys_error
+    return loss_total, loss_critic, acc, loss_phys, phys_error
+
+def loss_func(critic):
+    
+    target = torch.zeros(critic.shape[0], dtype=torch.long).to(critic.device)
+    loss_list = F.cross_entropy(critic, target, reduction='none')
+    loss = torch.mean(loss_list)
+    
+    critic_diff = critic[:, 0] - critic[:, 1]
+    acc = torch.mean((critic_diff > 0).clone().detach().float())
+    
+    return loss, loss, acc, None, None
 
 
 def create_warmup_scheduler(warmup_type):
@@ -198,6 +219,7 @@ if __name__ == '__main__':
     lr_decay = args.lr_decay
     big_model = args.big_model
     origin_model = args.origin_model
+    enable_phys = args.enable_phys
     
     # Access the value of gpu_indices and convert it to a list of integers
     gpu_indices = [int(idx) for idx in args.gpu_indices.split(',')]
@@ -223,12 +245,15 @@ if __name__ == '__main__':
     
     # Instantiate your model, loss function, and optimizer
     if big_model:
-        model = MotionCritic(depth=3, dim_feat=256, dim_rep=512, mlp_ratio=4)
+        model = MotionCritic(enable_phys=enable_phys, depth=3, dim_feat=256, dim_rep=512, mlp_ratio=4)
     else:
-        model = MotionCritic(depth=3, dim_feat=128, dim_rep=256, mlp_ratio=2)
+        model = MotionCritic(enable_phys=enable_phys, depth=3, dim_feat=128, dim_rep=256, mlp_ratio=2)
     model = torch.nn.DataParallel(model)
     model.to(device)
-    criterion = loss_func  # Assuming your loss_func is already defined
+    if enable_phys:
+        criterion = loss_func_phys
+    else:
+        criterion = loss_func  # Assuming your loss_func is already defined
     
     # Create your optimizer
     optimizer, scheduler, warmup_scheduler = configure_optimization(model, lr, lr_warmup, lr_decay)
@@ -267,15 +292,20 @@ if __name__ == '__main__':
                 key: batch_data[key].cuda(device=device)
                 for key in ['motion_better', 'motion_worse'] if key in batch_data
             }
-            batch_mpjpe_gt = torch.stack([batch_data['mpjpe_better'], batch_data['mpjpe_worse']], dim=1).cuda(device=device)
-
+            
             # Zero the gradients
             optimizer.zero_grad()
 
             # Forward pass
-            critic, phys_score = model(batch_motion) # torch (batch_size, 2), (batch_size, 2)
+            if enable_phys:
+                batch_mpjpe_gt = torch.stack([batch_data['mpjpe_better'], batch_data['mpjpe_worse']], dim=1).cuda(device=device)
+                critic, phys_score = model(batch_motion) # torch (batch_size, 2), (batch_size, 2)
+                loss, loss_critic, acc, loss_phys, phys_error = criterion(critic, phys_score, batch_mpjpe_gt)
+            else:
+                critic = model(batch_motion)
+                loss, loss_critic, acc, loss_phys, phys_error = criterion(critic)
+                
             # Compute the loss
-            loss, loss_critic, loss_phys, acc, phys_error = criterion(critic, phys_score, batch_mpjpe_gt)
 
             # Backward pass and optimization
             loss.backward()
@@ -284,14 +314,22 @@ if __name__ == '__main__':
             if step % 40 == 0:
                 # Log metrics to WandB
                 if not args.debug:
-                    wandb.log({"Loss": loss.item(), "Loss_critic": loss_critic.item(), "Loss_phys": loss_phys.item(), "Accuracy": acc.item(), "Phys error": phys_error.item(), "lr": optimizer.param_groups[0]['lr']})
+                    wandb.log({
+                        "Loss": loss.item(), 
+                        "Loss_critic": loss_critic.item(),  
+                        "Accuracy": acc.item(), 
+                        "Loss_phys": loss_phys.item() if loss_phys else 0,
+                        "Phys_error": phys_error.item() if phys_error else 0, 
+                        "lr": optimizer.param_groups[0]['lr'],
+                        })
 
                 # Optionally, print training metrics
-                print(f'Epoch {epoch + 1}, Step: {step}, Loss: {loss.item()}, Accuracy: {acc.item()}, Phys error: {phys_error.item()}')
+                print(f'Epoch {epoch + 1}, Step: {step}, Loss: {loss.item()}, Accuracy: {acc.item()}, Phys error: {phys_error.item() if phys_error else 0}')
                 # Remove batch_data from GPU to save memory
 
             batch_motion = {key: value.detach().cpu() for key, value in batch_motion.items()}
-            batch_mpjpe_gt = batch_mpjpe_gt.detach().cpu()
+            if enable_phys:
+                batch_mpjpe_gt = batch_mpjpe_gt.detach().cpu()
             # time_end = time.time()
             # print(f'Step Time: {time_end - time_start}')
 
@@ -319,37 +357,45 @@ if __name__ == '__main__':
                     key: batch_data[key].cuda(device=device)
                     for key in ['motion_better', 'motion_worse'] if key in batch_data
                 }
-                batch_mpjpe_gt = torch.stack([batch_data['mpjpe_better'], batch_data['mpjpe_worse']], dim=1).cuda(device=device)
-                # val_batch_data = {key: value.cuda(device=device) for key, value in val_batch_data.items()}
-                critic, phys_score = model(batch_motion)
-                loss, critic_loss, phys_loss, acc, phys_error = criterion(critic, phys_score, batch_mpjpe_gt)
+                if enable_phys:
+                    batch_mpjpe_gt = torch.stack([batch_data['mpjpe_better'], batch_data['mpjpe_worse']], dim=1).cuda(device=device)
+                    critic, phys_score = model(batch_motion) # torch (batch_size, 2), (batch_size, 2)
+                    loss, loss_critic, acc, loss_phys, phys_error = criterion(critic, phys_score, batch_mpjpe_gt)
+                    average_phys_error += phys_error.item() * batch_size
+                    average_phys_loss += loss_phys.item() * batch_size
+                    batch_mpjpe_gt = batch_mpjpe_gt.detach().cpu()
+                else:
+                    critic = model(batch_motion)
+                    loss, loss_critic, acc, loss_phys, phys_error = criterion(critic)
+                
 
                 batch_size = len(batch_data)
                 average_val_acc += acc.item() * batch_size
-                average_phys_error += phys_error.item() * batch_size
                 average_val_loss += loss.item() * batch_size
-                average_critic_loss += critic_loss.item() * batch_size
-                average_phys_loss += phys_loss.item() * batch_size
+                average_critic_loss += loss_critic.item() * batch_size
                 total_val_samples += batch_size
                 batch_motion = {key: value.detach().cpu() for key, value in batch_motion.items()}
-                batch_mpjpe_gt = batch_mpjpe_gt.detach().cpu()
 
-                # val_batch_data = {key: value.detach().cpu() for key, value in val_batch_data.items()}
-                # del val_batch_data
                 torch.cuda.empty_cache()
 
             # Calculate average loss and accuracy
             average_val_loss = average_val_loss / total_val_samples
             average_val_acc = average_val_acc / total_val_samples
             average_critic_loss = average_critic_loss / total_val_samples
-            average_phys_loss = average_phys_loss / total_val_samples
-            average_phys_error = average_phys_error / total_val_samples
+            if enable_phys:
+                average_phys_loss = average_phys_loss / total_val_samples
+                average_phys_error = average_phys_error / total_val_samples
             
             if not args.debug:
-                wandb.log({"val_Phys_error": average_phys_error, "val_Accuracy": average_val_acc, "val_Loss": average_val_loss, "val_critic_Loss": average_critic_loss, "val_phys_Loss": average_phys_loss})
+                wandb.log({"val_Loss": average_val_loss, 
+                           "val_critic_Loss": average_critic_loss, 
+                           "val_Accuracy": average_val_acc, 
+                           "val_phys_Loss": average_phys_loss, 
+                           "val_Phys_error": average_phys_error
+                           })
 
             # Optionally, print training metrics
-            print(f'Epoch {epoch + 1}, val_Loss: {average_val_loss}, val_critic_Loss: {average_critic_loss}, val_phys_Loss: {average_phys_loss}, val_Accuracy: {average_val_acc}, val_Phys_error: {average_phys_error}')
+            # print(f'Epoch {epoch + 1}, val_Loss: {average_val_loss}, val_critic_Loss: {average_critic_loss}, val_phys_Loss: {average_phys_loss}, val_Accuracy: {average_val_acc}, val_Phys_error: {average_phys_error}')
 
 
         # Save the best model based on validation accuracy
@@ -363,7 +409,6 @@ if __name__ == '__main__':
                 'optimizer_state_dict': optimizer.state_dict(),
                 'best_accuracy': best_accuracy,
                 'accuracy': acc.item(),
-                'phys_error': phys_error.item(),
             }, best_checkpoint_path)
             print(f"Best model saved at {best_checkpoint_path}")
 
