@@ -89,67 +89,14 @@ def parse_args():
     return parser.parse_args()
 
 
-
-def get_dataset_file(dataset):
-
-    if args.dataset == 'mdm_prompt':
-        train_pth_name = "mlist_mdma_p00_to_p09_mdmu_p00_to_p37.pth"
-        val_pth_name = "mlist_mdma_p10_to_p11_mdmu_p38_to_p39.pth"
-
-    elif args.dataset == 'mdm_seq':
-        train_pth_name = "mlist_mdm_trainseq.pth"
-        val_pth_name = "mlist_mdm_valseq.pth"
-
-    elif args.dataset == 'mdm_shuffle':
-        train_pth_name = "mlist_mdm_trainshuffle.pth"
-        val_pth_name = "mlist_mdm_valshuffle.pth"
-
-    elif args.dataset == 'flame_seq':
-        train_pth_name = "mlist_flame_trainseq.pth"
-        val_pth_name = "mlist_flame_valseq.pth"
-
-    elif args.dataset == 'flame_shuffle':
-        train_pth_name = "mlist_flame_trainshuffle.pth"
-        val_pth_name = "mlist_flame_valshuffle.pth"
-
-    elif args.dataset == 'hfull_seq':
-        train_pth_name = "mlist_hfull_trainseq.pth"
-        val_pth_name = "mlist_hfull_valseq.pth"
-
-    elif args.dataset == 'hfull_shuffle':
-        train_pth_name = "mlist_hfull_trainshuffle.pth"
-        val_pth_name = "mlist_hfull_valshuffle.pth"
-
-    elif args.dataset == 'full_shuffle':
-        train_pth_name = "mlist_full_trainshuffle.pth"
-        val_pth_name = "mlist_full_valshuffle.pth"
-
-    elif args.dataset == 'mdmfull_seq':
-        train_pth_name = "mlist_mdmfull_trainseq.pth"
-        val_pth_name = "mlist_mdmfull_valseq.pth"
-
-    elif args.dataset == 'mdmfull_shuffle':
-        train_pth_name = "mlist_mdmfull_trainshuffle.pth"
-        val_pth_name = "mlist_mdmfull_valshuffle.pth"
-        
-    elif args.dataset == 'flamefull_seq':
-        train_pth_name = "mlist_flamefull_trainseq.pth"
-        val_pth_name = "mlist_flamefull_valseq.pth"
-
-    elif args.dataset == 'flamefull_shuffle':
-        train_pth_name = "mlist_flamefull_trainshuffle.pth"
-        val_pth_name = "mlist_flamefull_valshuffle.pth"
-        
-    return train_pth_name, val_pth_name
-
 def create_data_loaders(dataset, batch_size):
     
     
     # train_pth_name, val_pth_name = get_dataset_file(dataset)
     # train_pth = os.path.join(PROJ_DIR, 'data/'+ train_pth_name)
     # val_pth = os.path.join(PROJ_DIR, 'data/'+ val_pth_name)
-    train_motion_pairs = motion_pair_dataset(dataset_name=f'{dataset}train')
-    val_motion_pairs = motion_pair_dataset(dataset_name=f'{dataset}val')
+    train_motion_pairs = motion_pair_dataset(dataset_name=f'mlist_mdmfull_train_{dataset}.pth')
+    val_motion_pairs = motion_pair_dataset(dataset_name="mlist_mdmfull_val.pth")
     
     # Instantiate DataLoader
     train_loader = DataLoader(train_motion_pairs, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2)
@@ -159,7 +106,7 @@ def create_data_loaders(dataset, batch_size):
 
 class motion_pair_dataset(Dataset):
     def __init__(self, dataset_name):
-        motion_dataset_pth = os.path.join(PROJ_DIR, 'data/'+ dataset_name + '_shuffle.pth')
+        motion_dataset_pth = os.path.join(PROJ_DIR, 'data/'+ dataset_name)
         self.data = torch.load(motion_dataset_pth)
         mpjpe_better_pth = os.path.join(PROJ_DIR, 'data/mpjpe/'+ dataset_name + '_mpjpe_better.npy')
         mpjpe_better = np.load(mpjpe_better_pth)
@@ -261,7 +208,7 @@ if __name__ == '__main__':
     # init_seeds(3407, multi_gpu=gpu_number > 1)
     
     batch_size = args.batch_size
-    lr = args.learning_rate
+    lr = args.learning_rate * (batch_size / 32)
     # lr = 1e-3 * (batch_size/32) # parallel changing
 
     print(f"training on gpu {gpu_indices}, training starting with batchsize {batch_size}, lr {lr}")
