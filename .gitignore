@@ -9,12 +9,15 @@ assets/
 !MDMCritic/criexample.pth
 MotionCritic/wandb
 MotionCritic/data/
+!MotionCritic/data/mpjpe/
+!MotionCritic/data/mapping/
 MotionCritic/datasets/
 MotionCritic/pretrained/
 MotionCritic/marked/
 MotionCritic/wandb/
 MotionCritic/metric/metrics_data/
 MotionCritic/metric/body_models/
+MotionCritic/pics/
 
 MDMCritic/body_models/
 MDMCritic/dataset/
