@@ -27,16 +27,16 @@ from data_loaders.tensors import collate
 import random
 import diffusion.gaussian_diffusion as gsdiff
 
-from pubcode.AlignHP.MDMCritic.sample.critic_generate import outof_mdm, into_critic
+from sample.critic_generate import outof_mdm, into_critic
 
 # For ImageNet experiments, this was a good default value.
 # We found that the lg_loss_scale quickly climbed to
 # 20-21 within the first ~1K steps of training.
 INITIAL_LOG_LOSS_SCALE = 20.0
-PROJ_DIR = os.path.dirname(os.path.abspath(__file__))
 import sys
-PROJ_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJ_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(PROJ_DIR)
+os.environ['WANDB__EXECUTABLE'] =  '/home/zhaosh/miniconda3/envs/mocritic/bin/python'
 os.environ['WANDB_DIR'] = PROJ_DIR + '/wandb/'
 os.environ['WANDB_CACHE_DIR'] = PROJ_DIR + '/wandb/.cache/'
 os.environ['WANDB_CONFIG_DIR'] = PROJ_DIR + '/wandb/.config/'
@@ -75,6 +75,9 @@ class TuneLoop:
         self.global_batch = self.batch_size # * dist.get_world_size()
         self.num_steps = args.num_steps
         self.num_epochs = self.num_steps // len(self.data) + 1
+        # training dataset一共1190条数据，batch size 64，每个epoch 18 steps
+        # 1200 steps，相当于 67 epochs
+        print(f"### num steps {self.num_steps}, num epochs {self.num_epochs}") # num steps 1200, num epochs 67, len data 18
 
         self.sync_cuda = torch.cuda.is_available()
 
@@ -140,7 +143,7 @@ class TuneLoop:
         
         if args.wandb is not None:
             self.use_wandb=True
-            wandb.init(project="preexp", name=args.wandb, resume=False)
+            wandb.init(project="MDM_finetune", name=args.wandb, resume=False)
         else:
             self.use_wandb=False
 
@@ -190,12 +193,20 @@ class TuneLoop:
         for epoch in range(self.num_epochs):
             print(f'### epoch {epoch} begin')
             # for motion, cond in tqdm(self.data):
-            for motion, cond in self.data:
-                if self.step % self.save_interval == 0:
+            for motion, cond in self.data: # len(self.data) = 18
+                print(f"### Step {self.step} begin")
+                # save and evaluate
+                if self.step % self.save_interval == 0: # self.save_interval=100
+                    # self.save()
+                    self.model.eval()
+                    self.evaluate()
+                    if self.do_sample_when_eval:
+                        self.sample_when_eval()
+                    self.model.train()
                     # Run for a finite amount of time in integration tests.
                     if os.environ.get("DIFFUSION_TRAINING_TEST", "") and self.step > 0:
                         return
-                    
+                # if self.step > 0 and self.step % self.save_interval == 0: 
                 if not (not self.lr_anneal_steps or self.step + self.resume_step < self.lr_anneal_steps):
                     break
 
@@ -208,7 +219,7 @@ class TuneLoop:
                     self.run_critic_step(motion, cond)
 
 
-                if self.step % self.log_interval == 0:
+                if self.step % self.log_interval == 0: # log interval = 1
                     for k,v in logger.get_current().dumpkvs().items():
                         if k == 'loss':
                             print('step[{}]: loss[{:0.5f}]'.format(self.step+self.resume_step, v))
@@ -219,7 +230,7 @@ class TuneLoop:
                             self.train_platform.report_scalar(name=k, value=v, iteration=self.step, group_name='Loss')
 
                 
-                self.step += 1
+                self.step += 1   
             if not (not self.lr_anneal_steps or self.step + self.resume_step < self.lr_anneal_steps):
                 break
         
@@ -260,7 +271,7 @@ class TuneLoop:
                     self.train_platform.report_scalar(name=k, value=val, iteration=self.step, group_name='Eval')
                     # print(f"k is {k} and v.mean is {np.array(v).astype(float).mean()}")
                     if self.use_wandb:
-                        wandb.log({k: val})  
+                        wandb.log({k: val}, step=self.step)  
                 else:
                     self.train_platform.report_scalar(name=k, value=np.array(v).astype(float).mean(), iteration=self.step, group_name='Eval Unconstrained')
 
@@ -311,7 +322,7 @@ class TuneLoop:
             )
             print(f"mdm loss is {loss} ", end=',')
             if self.use_wandb:
-                wandb.log({'loss': loss.item()})
+                wandb.log({'loss': loss.item()}, step=self.step)
             
             self.mp_trainer.backward(loss)
 
@@ -631,7 +642,7 @@ class TuneLoop:
         print(f"self.evalbatch0 device is {self.evalbatch0.device}, self.evalfullbatch device is {self.evalfullbatch.device}")
 
     def sample_and_save_multi(self, step=None):
-        # self.sample_and_save(0)
+        # self.sample_and_save(id=0, step=step)
         # self.sample_and_save(1)
         # self.sample_and_save(2)
         # self.sample_and_save(3)
@@ -700,13 +711,15 @@ class TuneLoop:
         
         critics = self.critic_model.module.batch_critic(into_critic(outof_mdm(sample)))
         critics = torch.squeeze(critics)
+        motions = into_critic(outof_mdm(sample))
+        # print('critics shape:', critics.shape, ', motions shape: ', motions.shape)
         # saving motions and critic scores
-        # if id is not None:
-        #     torch.save(critics, os.path.join(PROJ_DIR, f"save/critics/uncriticed-critics-batch{id}.pth"))
-        #     torch.save(outof_mdm(sample), os.path.join(PROJ_DIR, f"save/critics/uncriticed-motions-evalfullbatch{id}.pth"))
-        # else:
-        #     torch.save(critics, os.path.join(PROJ_DIR, f"save/critics/uncriticed-critics{id}.pth"))
-        #     torch.save(outof_mdm(sample), os.path.join(PROJ_DIR, f"save/critics/uncriticed-motions{step}.pth"))
+        if id is not None:
+            torch.save(critics, os.path.join(PROJ_DIR, f"save/gen/uncriticed-critics-batch{id}.pth"))
+            torch.save(motions, os.path.join(PROJ_DIR, f"save/gen/uncriticed-motions-evalfullbatch{id}.pth"))
+        else:
+            torch.save(critics, os.path.join(PROJ_DIR, f"save/gen/uncriticed-critics-step{step}.pth"))
+            torch.save(motions, os.path.join(PROJ_DIR, f"save/gen/uncriticed-motions-step{step}.pth"))
 
     def eval_fid(self):
         
@@ -806,7 +819,7 @@ class TuneLoop:
         if self.use_wandb:
             wandb_data = [[x,y] for (x,y) in zip(dump_list, sampled_critic_list)]
             table = wandb.Table(data=wandb_data, columns = ["denoise step", "critic"])
-            wandb.log({f"denoising-process at valstep{self.step}" : wandb.plot.line(table, "denoise step", "critic", stroke=None, title=f"denoising-process at valstep{self.step}")})
+            wandb.log({f"denoising-process at valstep{self.step}" : wandb.plot.line(table, "denoise step", "critic", stroke=None, title=f"denoising-process at valstep{self.step}")}, step=self.step)
 
 # what to do:
 # save a batch. the saved batch shall be used in user study.
@@ -847,12 +860,13 @@ class TuneLoop:
         # save that batch.
         data = {
             'motion': check_list,
+            'score': score_list,
             'comment': comment_list,
             'path': path_list,
         }
         batchpath = os.path.join(pathdir, f"step{self.step}-evalbatch.pth")
-        torch.save(data, batchpath)
         print(f"batch saved at {batchpath}")
+        torch.save(data, batchpath)
 
 
         if self.gt_rendered is False:
@@ -903,10 +917,9 @@ class TuneLoop:
                     self.train_platform.report_scalar(name=k, value=val, iteration=self.step, group_name='Eval')
                     # print(f"k is {k} and v.mean is {np.array(v).astype(float).mean()}")
                     if self.use_wandb:
-                        wandb.log({k: val})                 
+                        wandb.log({k: val}, step=self.step)                 
         
 
-        
 
         
     def critic_forward_backward(self, batch, cond):
@@ -983,7 +996,7 @@ class TuneLoop:
             # print(f"denoise_t is {denoise_t}, critic_output is {critic_loss.item()}", end = ", ")
             print(f"critic_output is {critic_loss.item()}", end = ", ")
             if self.use_wandb:
-                wandb.log({'critic_output': critic_loss.item()})
+                wandb.log({'critic_output': critic_loss.item()}, step=self.step)
 
             if self.add_random_critic_loss:
                 random_critic_loss = torch.rand(1, device=critic_loss.device)
@@ -1010,10 +1023,10 @@ class TuneLoop:
                     kl_loss = normal_kl(pre_mean, pre_logvar, curr_mean, curr_logvar)  
                 critic_loss = critic_loss + self.kl_loss_scale * kl_loss
                 if self.use_wandb:
-                    wandb.log({'kl_loss': kl_loss.item()})
+                    wandb.log({'kl_loss': kl_loss.item()}, step=self.step)
 
             if self.use_wandb:
-                wandb.log({'critic_loss': critic_loss.item()})
+                wandb.log({'critic_loss': critic_loss.item()}, step=self.step)
 
             
             self.mp_trainer.backward(critic_loss)

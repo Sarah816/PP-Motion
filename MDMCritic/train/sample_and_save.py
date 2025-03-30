@@ -24,15 +24,15 @@ def main():
     train_platform = train_platform_type(args.save_dir)
     train_platform.report_args(args, name='Args')
 
-    if args.save_dir is None:
-        raise FileNotFoundError('save_dir was not specified.')
-    elif os.path.exists(args.save_dir) and not args.overwrite:
-        raise FileExistsError('save_dir [{}] already exists.'.format(args.save_dir))
-    elif not os.path.exists(args.save_dir):
-        os.makedirs(args.save_dir)
-    args_path = os.path.join(args.save_dir, 'args.json')
-    with open(args_path, 'w') as fw:
-        json.dump(vars(args), fw, indent=4, sort_keys=True)
+    # if args.save_dir is None:
+    #     raise FileNotFoundError('save_dir was not specified.')
+    # elif os.path.exists(args.save_dir) and not args.overwrite:
+    #     raise FileExistsError('save_dir [{}] already exists.'.format(args.save_dir))
+    # elif not os.path.exists(args.save_dir):
+    #     os.makedirs(args.save_dir)
+    # args_path = os.path.join(args.save_dir, 'args.json')
+    # with open(args_path, 'w') as fw:
+    #     json.dump(vars(args), fw, indent=4, sort_keys=True)
 
     dist_util.setup_dist(args.device)
 
@@ -55,7 +55,9 @@ def main():
 
     print('Total params: %.2fM' % (sum(p.numel() for p in model.parameters_wo_clip()) / 1000000.0))
     print("Training...")
-    TuneLoop(args, train_platform, model, diffusion, data, critic_model).sample_and_save_multi(step=args.resume_checkpoint[-7:-3])
+    step = args.resume_checkpoint[-7:-3]
+    print("Resuming from step: ", step)
+    TuneLoop(args, train_platform, model, diffusion, data, critic_model).sample_and_save_multi(step=step)
     
 
     train_platform.close()

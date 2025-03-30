@@ -24,5 +24,6 @@ MDMCritic/dataset/
 MDMCritic/save/
 MDMCritic/body_models/
 MDMCritic/wandb/
+MDMCritic/glove/
 requirements.txt
 

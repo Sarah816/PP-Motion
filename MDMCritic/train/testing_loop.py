@@ -27,7 +27,7 @@ from data_loaders.tensors import collate
 import random
 import diffusion.gaussian_diffusion as gsdiff
 
-from pubcode.AlignHP.MDMCritic.sample.critic_generate import outof_mdm, into_critic
+from sample.critic_generate import outof_mdm, into_critic
 from render.render import render_multi
 
 # For ImageNet experiments, this was a good default value.
@@ -36,7 +36,8 @@ from render.render import render_multi
 INITIAL_LOG_LOSS_SCALE = 20.0
 
 import sys
-PROJ_DIR = os.path.dirname(os.path.abspath(__file__))
+# PROJ_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJ_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(PROJ_DIR)
 os.environ['WANDB_DIR'] = PROJ_DIR + '/wandb/'
 os.environ['WANDB_CACHE_DIR'] = PROJ_DIR + '/wandb/.cache/'

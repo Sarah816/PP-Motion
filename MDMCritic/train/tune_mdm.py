@@ -13,7 +13,7 @@ from train.tuning_loop import TuneLoop
 from data_loaders.get_data import get_dataset_loader
 from utils.model_util import create_model_and_diffusion
 from train.train_platforms import ClearmlPlatform, TensorboardPlatform, NoPlatform  # required for the eval operation
-from critic.critic import Motioncritic
+from critic.critic import MotionCritic
 import torch
 
 def main():
@@ -47,7 +47,7 @@ def main():
     critic_device = dist_util.dev()
 
     print(f"Loading critic model from [{args.critic_model_path}]...")
-    critic_model = Motioncritic(depth=3, dim_feat=256, dim_rep=512, mlp_ratio=4)
+    critic_model = MotionCritic(depth=3, dim_feat=256, dim_rep=512, mlp_ratio=4)
     critic_model = torch.nn.DataParallel(critic_model)
     critic_model.to(critic_device)
     checkpoint = torch.load(args.critic_model_path)
