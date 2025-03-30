@@ -18,6 +18,7 @@ MotionCritic/wandb/
 MotionCritic/metric/metrics_data/
 MotionCritic/metric/body_models/
 MotionCritic/pics/
+MotionCritic/stats/
 
 MDMCritic/body_models/
 MDMCritic/dataset/

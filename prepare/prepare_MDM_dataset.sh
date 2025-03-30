@@ -51,3 +51,11 @@ rm smpl.zip
 echo -e "Downloading done!"
 
 echo -e "MDM preparations complete !"
+
+cd ..
+mkdir -p assets/actionrecognition/
+cd assets/actionrecognition/
+
+echo -e "Downloading the HumanAct12 action recognition model"
+wget https://raw.githubusercontent.com/EricGuo5513/action-to-motion/master/model_file/action_recognition_model_humanact12.tar -O humanact12_gru.tar
+echo -e
