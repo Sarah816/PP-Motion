@@ -12,7 +12,7 @@ import time
 from lib.model.critic import MotionCritic
 
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Sampler
 from torch.optim.lr_scheduler import ExponentialLR
 import torch.nn.functional as F
 from torch.backends import cudnn
@@ -23,16 +23,35 @@ import wandb
 import torchsort
 import json
 from scipy.stats import spearmanr, pearsonr, kendalltau
+import random
+from tqdm import tqdm
 
 # this might be useful
 torch.manual_seed(3407)
 
 checkpoint_interval = 15
 
-# mpjpe = np.load(os.path.join(PROJ_DIR, 'data/mpjpe/mdmval_mpjpe.npy'))
-# mpjpe = - mpjpe
-# np.save(os.path.join(PROJ_DIR, 'data/mpjpe/mdmval_mpjpe_reverse.npy'), mpjpe)
-# exit(0)
+# with open('data/mapping/motion_better_duplicate.json') as f:
+#     duplicate = json.load(f)
+# mpjpe = np.load('data/mpjpe/mdmtrain_mpjpe_corrected_org.npy')
+# mpjpe_norm = np.load('data/mpjpe/mdmtrain_mpjpe_corrected_norm.npy')
+# mpjpe_reverse = np.load('data/mpjpe/mdmtrain_mpjpe_corrected_reverse.npy') # (46740, 2)
+# for index_list in duplicate:
+#     idx0 = index_list[0]
+#     if len(index_list) >= 2:
+#         idx1 = index_list[1]
+#         mpjpe[idx1, 0] = mpjpe[idx0, 0]
+#         mpjpe_norm[idx1, 0] = mpjpe_norm[idx0, 0]
+#         mpjpe_reverse[idx1, 0] = mpjpe_reverse[idx0, 0]
+#     if len(index_list) >= 3:
+#         idx2 = index_list[2]
+#         mpjpe[idx2, 0] = mpjpe[idx0, 0]
+#         mpjpe_norm[idx2, 0] = mpjpe_norm[idx0, 0]
+#         mpjpe_reverse[idx2, 0] = mpjpe_reverse[idx0, 0]
+# np.save('data/mpjpe/mdmtrain_mpjpe_corrected.npy', mpjpe)
+# np.save('data/mpjpe/mdmtrain_mpjpe_corrected_reverse.npy', mpjpe_reverse)
+# np.save('data/mpjpe/mdmtrain_mpjpe_corrected_norm.npy', mpjpe_norm)
+
 
 def parse_args():
 
@@ -50,7 +69,7 @@ def parse_args():
     parser.add_argument('--batch_size', type=int, default=64,
                         help='Batch size for training (default: 32)')
 
-    parser.add_argument('--epoch', type=int, default=120,
+    parser.add_argument('--epoch', type=int, default=200,
                         help='Batch size for training (default: 32)')
 
     parser.add_argument('--exp_name', type=str, default="exp7_2e-5_decay_seqsplit",
@@ -102,12 +121,19 @@ def parse_args():
 
 
 def create_data_loaders(dataset, batch_size):
+    # train_dataset = MotionCategoryDataset("mdmtrain", dataset_type=dataset)
+    # train_sampler = CategoryBatchSampler(train_dataset, batch_size=batch_size, drop_last=True)
+    # train_loader = DataLoader(train_dataset, batch_sampler=train_sampler)
+    val_dataset = MotionCategoryDataset("mdmval", dataset_type=dataset)
+    val_sampler = CategoryBatchSampler(val_dataset, batch_size=500, drop_last=False) # batch_size设置的比较大，使得每次evaluate时，同一个prompt的所有motion都在一个batch中，每条数据都能被取到
+    val_loader = DataLoader(val_dataset, batch_sampler=val_sampler)
+    
     train_motion_pairs = motion_pair_dataset(dataset_name="mdmtrain", dataset_type=dataset)
     train_loader = DataLoader(train_motion_pairs, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2)
     # val_motion_pairs = motion_pair_dataset(dataset_name="mdmval", dataset_type=dataset)
     # val_loader = DataLoader(val_motion_pairs, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2)
-    val_motion_pairs = MotionCategoryDataset(dataset_name="mdmval", dataset_type=dataset)
-    val_loader = DataLoader(val_motion_pairs, batch_size=1, shuffle=False, num_workers=8, pin_memory=True, prefetch_factor=2)
+    # val_motion_pairs = MotionCategoryDataset(dataset_name="mdmval", dataset_type=dataset)
+    # val_loader = DataLoader(val_motion_pairs, batch_size=1, shuffle=False, num_workers=8, pin_memory=True, prefetch_factor=2)
     return train_loader, val_loader
 
 class MotionCategoryDataset(Dataset):
@@ -143,21 +169,103 @@ class MotionCategoryDataset(Dataset):
         print('Category num:', len(self.labels))
     
     def __len__(self):
-        return len(self.labels) # 应当为52
+        return len(self.data)
     
     def __getitem__(self, index):
-        # 如果使用分类加载，每个样本为一个 label 对应的所有 motion
-        label = self.labels[index]
-        idxs = self.category_to_idx[label]
-        datasets = {}
-        for key in ["motion_better", "motion_worse"]:
-            data_list = [self.data[int(i)][key] for i in idxs]
-            datasets[key] = torch.stack(data_list)
-        for key in ["mpjpe_better", "mpjpe_worse"]:
-            data_list = [self.data[int(i)][key] for i in idxs]
-            datasets[key] = torch.tensor(data_list)
-        datasets['label'] = label
-        return datasets
+        # 直接返回样本，也可以根据需要加入类别信息，例如：
+        # 遍历 category_to_idx 找到对应的类别（如果必要的话）
+        return self.data[index]
+
+
+class CategoryBatchSampler(Sampler):
+    """
+    按类别采样的 batch sampler：
+      - 根据 dataset.category_to_idx 得到每个类别对应的样本下标
+      - 对每个类别内的下标随机打乱后，按 batch_size 切分成小批次
+      - 最后将所有小批次打乱顺序，确保每个 epoch 内每条数据只被采样一次
+    """
+    def __init__(self, dataset, batch_size=32, drop_last=False):
+        self.batch_size = batch_size
+        self.drop_last = drop_last
+        # dataset 中应有 category_to_idx 这个字典
+        self.category_to_indices = dataset.category_to_idx
+        # 记录各类别名称列表
+        self.categories = list(self.category_to_indices.keys())
+
+    def __iter__(self):
+        all_batches = []
+        # 对每个类别，打乱下标并分割成 batch
+        for cat in self.categories:
+            indices = list(self.category_to_indices[cat])
+            random.shuffle(indices)
+            # 分割成 batch_size 的小批次
+            for i in range(0, len(indices), self.batch_size):
+                batch = [int(x) for x in indices[i:i+self.batch_size]]
+                if len(batch) == self.batch_size or (not self.drop_last and len(batch) > 0):
+                    all_batches.append(batch)
+        # 随机打乱所有 batch 的顺序
+        random.shuffle(all_batches)
+        for batch in all_batches:
+            yield batch
+
+    def __len__(self):
+        total_batches = 0
+        for cat in self.categories:
+            n = len(self.category_to_indices[cat])
+            total_batches += n // self.batch_size
+            if not self.drop_last and n % self.batch_size > 0:
+                total_batches += 1
+        return total_batches
+
+
+# class MotionCategoryDataset(Dataset):
+#     def __init__(self, dataset_name, dataset_type):
+#         if dataset_name == "mdmtrain":
+#             motion_dataset_pth = os.path.join(PROJ_DIR, f'data/mlist_{dataset_name}_{dataset_type}.pth')
+#         elif dataset_name == "mdmval":
+#             motion_dataset_pth = os.path.join(PROJ_DIR, f'data/mlist_{dataset_name}.pth')
+#         else:
+#             raise ValueError("Unsupported dataset name.")
+            
+#         print(f"Loading dataset from {motion_dataset_pth}")
+#         self.data = torch.load(motion_dataset_pth)
+
+#         if enable_phys:
+#             if dataset_name == "mdmtrain":
+#                 mpjpe_path = os.path.join(PROJ_DIR, f'data/mpjpe/{dataset_name}_mpjpe_{dataset_type}_norm.npy')
+#             elif dataset_name == "mdmval":
+#                 mpjpe_path = os.path.join(PROJ_DIR, f'data/mpjpe/{dataset_name}_mpjpe_norm.npy')
+#             print(f"Loading mpjpe from {mpjpe_path}")
+#             mpjpe = np.load(mpjpe_path)
+#             for i in range(len(self.data)):
+#                 self.data[i]['mpjpe_better'] = mpjpe[i][0]
+#                 self.data[i]['mpjpe_worse'] = mpjpe[i][1]
+#         print(f"Dataset {dataset_name} length: {len(self.data)}")
+        
+#         category_json_path = os.path.join(PROJ_DIR, f"data/mapping/{dataset_name}_category.json")
+#         with open(category_json_path, "r") as f:
+#             # 假设 json 格式为 { "label1": [idx1, idx2, ...], "label2": [...], ... }
+#             self.category_to_idx = json.load(f)
+#         self.labels = list(self.category_to_idx.keys())
+#         print(f"Loaded category json from {category_json_path}")
+#         print('Category num:', len(self.labels))
+    
+#     def __len__(self):
+#         return len(self.labels) # 应当为52
+    
+#     def __getitem__(self, index):
+#         # 如果使用分类加载，每个样本为一个 label 对应的所有 motion
+#         label = self.labels[index]
+#         idxs = self.category_to_idx[label]
+#         datasets = {}
+#         for key in ["motion_better", "motion_worse"]:
+#             data_list = [self.data[int(i)][key] for i in idxs]
+#             datasets[key] = torch.stack(data_list)
+#         for key in ["mpjpe_better", "mpjpe_worse"]:
+#             data_list = [self.data[int(i)][key] for i in idxs]
+#             datasets[key] = torch.tensor(data_list)
+#         datasets['label'] = label
+#         return datasets
 
 class motion_pair_dataset(Dataset):
     def __init__(self, dataset_name, dataset_type):
@@ -277,7 +385,7 @@ def metric_func_corr(critic, phys_gt):
     return loss_critic, acc, spearman_corr, kendall_tau, pearson_corr, phys_error
         
 
-def loss_func_corr(critic, phys_gt, loss_type="plcc", critic_coef = 1.0, phys_coef = 1.0):
+def loss_func_corr(critic, phys_gt, loss_type, critic_coef = 1.0, phys_coef = 1.0):
     # critic: torch (batch_size, 2), mpjpe_gt: torch (batch_size, 2)
     
     target = torch.zeros(critic.shape[0], dtype=torch.long).to(critic.device)
@@ -291,6 +399,7 @@ def loss_func_corr(critic, phys_gt, loss_type="plcc", critic_coef = 1.0, phys_co
     
     if loss_type == "mse":
         loss_phys = F.mse_loss(critic, phys_gt)
+        phys_error = torch.abs(critic - phys_gt).mean()
         # loss_phys = 0.0005 * loss_phys
     
     elif loss_type == "plcc":
@@ -318,13 +427,25 @@ def loss_func_corr(critic, phys_gt, loss_type="plcc", critic_coef = 1.0, phys_co
         # loss_phys = -sum(loss_plcc) / len(loss_plcc)
     
     elif loss_type == "srocc":
+        critic_flat = critic.view(-1)
+        phys_flat = phys_gt.view(-1)
+        loss_phys = -spearmanr_loss(critic_flat.unsqueeze(0), phys_flat.unsqueeze(0))
         # NOTE: perpair: better-worse两条数据计算corr
-        loss_srocc = []
-        for i in range(critic.shape[0]):
-            loss_srocc.append(
-                spearmanr_loss(critic[i].unsqueeze(0), phys_gt[i].unsqueeze(0))
-            )
-        loss_phys = -sum(loss_srocc) / len(loss_srocc)
+        # loss_srocc = []
+        # for i in range(critic.shape[0]):
+        #     # print(critic[i].unsqueeze(0).shape)
+        #     # exit(0)
+        #     loss_srocc.append(
+        #         spearmanr_loss(critic[i].unsqueeze(0), phys_gt[i].unsqueeze(0))
+        #     )
+        # loss_phys = -sum(loss_srocc) / len(loss_srocc)
+    
+    elif loss_type == "mix":
+        critic_flat = critic.view(-1)
+        phys_flat = phys_gt.view(-1)
+        loss_plcc = -torch.corrcoef(torch.stack([critic_flat, phys_flat]))[0, 1]
+        loss_srocc = -spearmanr_loss(critic_flat.unsqueeze(0), phys_flat.unsqueeze(0))
+        loss_phys = loss_plcc + 0.5 * loss_srocc
     
     else:
         print("Wrong loss type!")
@@ -460,7 +581,7 @@ if __name__ == '__main__':
         # 46740 data pairs in total; batch_size = 64; steps = 46740/64 = 730
         # log every 40 steps, 730/40 = 18 logs per epoch
         for step, batch_data in enumerate(train_loader):
-            # time_start = time.time()
+            time_start = time.time()
             # Move batch data to GPU
             # Move each tensor in the dictionary to GPU
             model.train()
@@ -514,9 +635,9 @@ if __name__ == '__main__':
             batch_motion = {key: value.detach().cpu() for key, value in batch_motion.items()}
             if enable_phys:
                 batch_mpjpe_gt = batch_mpjpe_gt.detach().cpu()
-            # time_end = time.time()
+            time_end = time.time()
             # print(f'Step Time: {time_end - time_start}')
-
+        
         # evaluate the model on a epoch basis
         average_critic_loss = 0.0
         average_val_acc = 0.0
@@ -538,13 +659,13 @@ if __name__ == '__main__':
             batch_num = 0
             for batch_data in val_loader:
                 batch_num += 1
-                label = batch_data["label"]
+                # label = batch_data["label"]
                 batch_motion = {
                     key: batch_data[key].squeeze(0).cuda(device=device)
                     for key in ['motion_better', 'motion_worse'] if key in batch_data
                 } # {'motion_better': (batch_size, 60, 25, 3), 'motion_worse': (batch_size, 60, 25, 3)}
                 batch_size = batch_motion['motion_better'].shape[0]
-                print(f"Evaluating Label: {label}, batch size: {batch_size}")
+                # print(f"Evaluating Label: {label}, batch size: {batch_size}")
                 if phys_bypass:
                     batch_mpjpe_gt = torch.stack([batch_data['mpjpe_better'].squeeze(0), batch_data['mpjpe_worse'].squeeze(0)], dim=1).cuda(device=device)
                     critic, phys_score = model(batch_motion) # torch (batch_size, 2), (batch_size, 2)
@@ -553,7 +674,6 @@ if __name__ == '__main__':
                     batch_mpjpe_gt = torch.stack([batch_data['mpjpe_better'].squeeze(0), batch_data['mpjpe_worse'].squeeze(0)], dim=1).cuda(device=device)
                     critic = model(batch_motion)
                     loss_critic, acc, spearman_corr, kendall_tau, pearson_corr, phys_error = metric_func_corr(critic, batch_mpjpe_gt)
-                    print(pearson_corr)
                 else:
                     critic = model(batch_motion)
                     loss_critic, acc = metric_func(critic)
