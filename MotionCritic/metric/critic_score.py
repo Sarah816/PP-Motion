@@ -25,7 +25,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 device = torch.device('cuda:0')
 
 
-exp_name = "norm_lossmse_exp5_phys0.5"
+exp_name = "critic_correct_org_lr3.5e-5_singlegpu"
 
 val_dataset = "flame"
 val_pth_name = f"mlist_{val_dataset}.pth"
@@ -36,7 +36,9 @@ model = torch.nn.DataParallel(model)
 model.to(device)
 
 # load pretrained model
-checkpoint = torch.load(os.path.join(PROJ_DIR,f'output/{exp_name}/checkpoint_epoch_120.pth'), map_location=device)
+checkpoint = torch.load(os.path.join(PROJ_DIR,f'output/{exp_name}/checkpoint_latest.pth'), map_location=device)
+print('Checkpoint epoch: ', checkpoint['epoch'])
+
 # checkpoint = torch.load(os.path.join(PROJ_DIR,f'pretrained/motioncritic_pre.pth'), map_location=device)
 # Load the model and optimizer
 model.load_state_dict(checkpoint['model_state_dict'])
@@ -114,16 +116,16 @@ for val_batch_data in tqdm(val_loader):
     scores.detach().cpu()
 
 all_scores = torch.cat(all_scores, dim=0)
-print(f"all_scores' shape {all_scores.shape}")
-np.save(f"stats/{exp_name}_{val_dataset}.npy", all_scores.numpy())
+# print(f"all_scores' shape {all_scores.shape}")
+# np.save(f"stats/{exp_name}_{val_dataset}.npy", all_scores.numpy())
 # np.save(f"stats/pretrained_mdmval.npy", all_scores.numpy())
-print(f"all_scores' mean {torch.mean(all_scores)}")
+# print(f"all_scores' mean {torch.mean(all_scores)}")
 
 
 metric_func(all_scores)
 
-physics_score= np.load(f"data/mpjpe/{val_dataset}_mpjpe.npy")
-spearman_corr, kendall_tau, pearson_corr, spearman_p, kendall_p, pearson_p = metric_correlation(all_scores.numpy(), physics_score, calc_type="prompt")
-print("spearman corr: ", spearman_corr, " p: ", spearman_p)
-print("kendall tau: ", kendall_tau, " p: ", kendall_p)
-print("pearson corr: ", pearson_corr, " p: ", pearson_p)
+# physics_score= np.load(f"data/mpjpe/{val_dataset}_mpjpe.npy")
+# spearman_corr, kendall_tau, pearson_corr, spearman_p, kendall_p, pearson_p = metric_correlation(all_scores.numpy(), physics_score, calc_type="prompt")
+# print("spearman corr: ", spearman_corr, " p: ", spearman_p)
+# print("kendall tau: ", kendall_tau, " p: ", kendall_p)
+# print("pearson corr: ", pearson_corr, " p: ", pearson_p)
