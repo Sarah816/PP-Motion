@@ -80,7 +80,7 @@ def render_single(motion, device, comment, file_path, no_comment=False, isYellow
     vertices = rot2xyz(motion, mask=None,
                        pose_rep='rot6d', translation=True, glob=True,
                        jointstype='vertices', betas=None, beta=0, glob_rot=None,
-                       vertstrans=True)
+                       vertstrans=True) # NOTE: vertices: [1, 6890, 3, 60]
 
     frames = 60
     MINS = torch.min(torch.min(vertices[0], dim=0)[0], dim=1)[0]

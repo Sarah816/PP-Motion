@@ -16,17 +16,130 @@ from lib.utils.rotation2xyz import Rotation2xyz
 from scipy.stats import wilcoxon
 import argparse
 
+from correlation import metric_correlation
+from lib.model.critic import MotionCritic
+from tqdm import tqdm
+from parsedata import into_critic
+from critic_score import get_val_scores
+
+from uhc.smpllib.smpl_eval import compute_phys_metrics
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Motion Critic Evaluation')
     parser.add_argument('--mode', type=str, choices=['mdm', 'flame'], 
                        default='mdm',
                        required=False,
                        help='Evaluation mode: mdm or flame')
+    parser.add_argument('--exp_name', type=str, 
+                       required=True,)
+    parser.add_argument('--checkpoint', type=str, 
+                       required=False,
+                       default='checkpoint_latest',)
+    parser.add_argument('--device_id', type=str, 
+                       required=False,
+                       default='0',)
     return parser.parse_args()
 
-# Replace global variables with args
-# global mode set
+
 args = parse_args()
+
+print("Loading GT datasets......")
+
+gt_humanact12 = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-humanact12/motion-gt{i}.pth'))['motion'] for i in range(12)]
+gt_uestc = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-uestc/motion-gtuestc{i}.pth'))['motion'] for i in range(40)]
+gt_flame = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-flame/motion-gtflame.pth'))]
+
+gt_humanact12xyz = torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/humanact12-gt-jointxyz.pt'))
+gt_uestcxyz = torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/uestc-gt-jointxyz.pt'))
+gt_flamexyz = torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/flame-gt-jointxyz.pt'))
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = args.device_id
+device = torch.device(f'cuda:0')
+
+exp_name = args.exp_name
+checkpoint = args.checkpoint
+val_dataset = args.mode
+
+# read all motions from files
+motion_location = os.path.join(PROJ_DIR, "datasets")
+print(f"generated motion location is {motion_location}")
+
+
+def visualize_vertices(vertices, title):
+    '''
+    vertices shape: [num_frames, 6890, 3]
+    '''
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+
+    vertices = vertices[0].cpu().numpy()
+    x, y, z = vertices[:, 0], vertices[:, 1], vertices[:, 2]
+
+    fig = plt.figure(dpi = 100)
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(x, y, z, s=1, color="blue")  # 颜色用 z 值表示
+    ax.view_init(elev=10., azim=-40)
+    ax.set_xlabel("X Axis")
+    ax.set_ylabel("Y Axis")
+    ax.set_zlabel("Z Axis")
+    ax.set_xlim(-0.5, 0.5)
+    ax.set_ylim(0.5, -0.5)
+    ax.set_zlim(-0.5, 0.5)
+
+    plt.savefig(f"render_output/pointcloud/{title}.png", dpi=300)
+    plt.close()
+    # exit(0)
+
+def get_vertices(motion, fix_height=False):
+    # motion: [batch_size, num_frames=60, 25, 3]
+    # motion: [batch_size, 25, 3, num_frames=60]
+    motion = motion.permute(0, 2, 3, 1) # motion: [batch_size, 25, 3, num_frames=60]
+    motion = motion.to(device)
+    rot2xyz = Rotation2xyz(device=device)
+    vertices = rot2xyz(motion, mask=None,
+                       pose_rep='rotvec', translation=True, glob=True,
+                       jointstype='vertices', betas=None, beta=0, glob_rot=None,
+                       vertstrans=True)
+    v = vertices.clone() # [batch_size, 6890, 3, num_frames=60]
+    v = v.permute(0, 3, 1, 2) # [batch_size, num_frames=60, 6890, 3]
+    v[:, :, :, [1, 2]] = v[:, :, :, [2, 1]] # 交换y,z轴数据
+    # Fix height
+    if fix_height:
+        for i in range(v.shape[0]):
+            gp = torch.min(v[i, 0, :, 2]) # 让每条motion的第0帧的最低点落地
+            v[i, :, :, 2] -= gp
+    # visualize_vertices(v[0], "vertices_z-up")
+    # exit(0)
+    return v
+
+def compute_phys(dataset_pth):
+    dataset = torch.load(dataset_pth)
+    compute_pen = []
+    compute_skate = []
+    compute_float = []
+    for i in tqdm(range(len(dataset))):
+        item = dataset[i]
+        # motion_better = item['motion_better'].squeeze(dim=0)
+        # motion_worse = item['motion_worse'].squeeze(dim=0)
+        motion_better = item['motion_better']
+        motion_worse = item['motion_worse']
+        motion = torch.stack((motion_better, motion_worse), dim=0)
+        vertices = get_vertices(motion)
+        metric_better = compute_phys_metrics(vertices[0])
+        metric_worse = compute_phys_metrics(vertices[1])
+        compute_pen.append(np.array([metric_better["penetration"], metric_worse["penetration"]]))
+        compute_skate.append(np.array([metric_better["skate"], metric_worse["skate"]]))
+        compute_float.append(np.array([metric_better["float"], metric_worse["float"]]))
+    compute_pen = np.stack(compute_pen, axis=0)
+    compute_skate = np.stack(compute_skate, axis=0)
+    compute_float = np.stack(compute_float, axis=0)
+    # print("penetration:", compute_pen)
+    # print("skating:", compute_skate)
+    # print("floating:", compute_float)
+    # exit(0)
+    return compute_pen, compute_skate, compute_float
+
 
 # Remove global evalmdm and evalflame declarations
 # Instead, use args.mode throughout the code
@@ -42,16 +155,6 @@ def choose_gt_dataset_from_filename(file_name):
     if args.mode == 'flame':
         return gt_flame[0]
 
-
-gt_humanact12 = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-humanact12/motion-gt{i}.pth'))['motion'] for i in range(12)]
-gt_uestc = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-uestc/motion-gtuestc{i}.pth'))['motion'] for i in range(40)]
-
-gt_humanact12xyz = []
-gt_uestcxyz = []
-
-
-gt_flame = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-flame/motion-gtflame.pth'))]
-gt_flamexyz = []
 
 def extract_number_from_filename(file_name):
     first_dash_index = file_name.find('-')
@@ -96,17 +199,23 @@ def build_gt_xyz():
     device = 'cpu'
     rot2xyz = Rotation2xyz(device=device)
     if args.mode == 'mdm':
-        for gt in gt_humanact12:
-
+        global gt_humanact12xyz
+        global gt_uestcxyz
+        for gt in tqdm(gt_humanact12):
+            # gt shape: [batch_size, 25, 6, num_frames=60]
             gt_xyz = rot2xyz(gt, mask=None,
                             pose_rep='rot6d', translation=True, glob=True,
                             jointstype='smpl', betas=None, beta=0, glob_rot=None,
                             vertstrans=True)
             # shape is [batch_size, 24, 3, 60]
-            gt_xyz = gt_xyz.permute(0, 3, 1, 2)
+            gt_xyz = gt_xyz.permute(0, 3, 1, 2) # shape is [batch_size, 60, 24, 3]
             gt_humanact12xyz.append(gt_xyz)
         
-        for gt in gt_uestc:
+        # gt_humanact12xyz = torch.stack(gt_humanact12xyz)
+        # print(f"gt_humanact12xyz shape {gt_humanact12xyz.shape}")
+        torch.save(gt_humanact12xyz, os.path.join(PROJ_DIR, f'data/gt-packed/humanact12-gt-jointxyz.pt'))
+        
+        for gt in tqdm(gt_uestc):
             gt_xyz = rot2xyz(gt, mask=None,
                             pose_rep='rot6d', translation=True, glob=True,
                             jointstype='smpl', betas=None, beta=0, glob_rot=None,
@@ -114,9 +223,15 @@ def build_gt_xyz():
             # shape is [batch_size, 24, 3, 60]
             gt_xyz = gt_xyz.permute(0, 3, 1, 2)
             gt_uestcxyz.append(gt_xyz)
+        
+        # gt_uestcxyz = torch.stack(gt_uestcxyz)
+        # print(f"gt_uestcxyz shape {gt_uestcxyz.shape}")
+        torch.save(gt_uestcxyz, os.path.join(PROJ_DIR, f'data/gt-packed/uestc-gt-jointxyz.pt'))
+        
 
     if args.mode == 'flame':
-        for gt in gt_flame:
+        global gt_flamexyz
+        for gt in tqdm(gt_flame):
             gt_xyz = rot2xyz(gt, mask=None,
                             pose_rep='rot6d', translation=True, glob=True,
                             jointstype='smpl', betas=None, beta=0, glob_rot=None,
@@ -124,6 +239,10 @@ def build_gt_xyz():
             # shape is [batch_size, 24, 3, 60]
             gt_xyz = gt_xyz.permute(0, 3, 1, 2)
             gt_flamexyz.append(gt_xyz)
+        
+        gt_flamexyz = torch.stack(gt_flamexyz)
+        print(f"gt_flamexyz shape {gt_flamexyz.shape}") # [1, batch_size, 60, 24, 3]
+        torch.save(gt_flamexyz, os.path.join(PROJ_DIR, f'data/gt-packed/flame-gt-jointxyz.pth'))
 
 
 
@@ -183,9 +302,6 @@ def compute_PFC(batch_vectors):
     return scores_tensor
 
 
-# read all motions from files
-motion_location = os.path.join(PROJ_DIR, "datasets")
-
 def rootloc_pairs_from_filename(file_name, choise):
     better_loc = []
     worse_loc = []
@@ -193,10 +309,10 @@ def rootloc_pairs_from_filename(file_name, choise):
     motion = npz_file['arr_0'].item()['motion'] # shape:[batch_size,25,6,60]
     motion = np.array(motion).transpose(0, 3, 1, 2) # shape:[batch_size,60,25,6]
 
-    # print(f"motion shape {type(motion)} {motion.shape}")
 
     
     root_loc = torch.from_numpy(motion[:,:,24:25,0:3]) # shape:[batch_size,60,1,3], batch_size=1
+    # print(f"file {file_name}, motion shape {type(root_loc)} {root_loc.shape}, choice {choise}")
 
     if args.mode == 'mdm':
         if choise == 'A':
@@ -233,10 +349,56 @@ def rootloc_pairs_from_filename(file_name, choise):
     return better_loc, worse_loc
 
 
+def make_pairs(joints_xyz, choise):
+    # data.shape[0] is 4 (4 data in a batch)
+    
+    if args.mode == 'mdm':
+        if choise == 'A':
+            better_xyz = [joints_xyz[0], joints_xyz[0], joints_xyz[0]]
+            worse_xyz = [joints_xyz[1], joints_xyz[2], joints_xyz[3]]
+        elif choise == 'B':
+            better_xyz = [joints_xyz[1], joints_xyz[1], joints_xyz[1]]
+            worse_xyz = [joints_xyz[0], joints_xyz[2], joints_xyz[3]]
+        elif choise == 'C':
+            better_xyz = [joints_xyz[2], joints_xyz[2], joints_xyz[2]]
+            worse_xyz = [joints_xyz[0], joints_xyz[1], joints_xyz[3]]
+        elif choise == 'D':
+            better_xyz = [joints_xyz[3], joints_xyz[3], joints_xyz[3]]
+            worse_xyz = [joints_xyz[0], joints_xyz[1], joints_xyz[2]]
+
+    if args.mode == 'flame':
+        if choise == 'A':
+            worse_xyz = [joints_xyz[0], joints_xyz[0], joints_xyz[0]]
+            better_xyz = [joints_xyz[1], joints_xyz[2], joints_xyz[3]]
+        elif choise == 'B':
+            worse_xyz = [joints_xyz[1], joints_xyz[1], joints_xyz[1]]
+            better_xyz = [joints_xyz[0], joints_xyz[2], joints_xyz[3]]
+        elif choise == 'C':
+            worse_xyz = [joints_xyz[2], joints_xyz[2], joints_xyz[2]]
+            better_xyz = [joints_xyz[0], joints_xyz[1], joints_xyz[3]]
+        elif choise == 'D':
+            worse_xyz = [joints_xyz[3], joints_xyz[3], joints_xyz[3]]
+            better_xyz = [joints_xyz[0], joints_xyz[1], joints_xyz[2]]
+
+    
+    better_xyz = torch.stack(better_xyz, dim=0)
+    worse_xyz = torch.stack(worse_xyz, dim=0)
+
+    return better_xyz, worse_xyz
+
+
+def critic_data_from_filename(file_name, choise):
+    npz_file = np.load(os.path.join(motion_location, file_name), allow_pickle=True)
+    motion = npz_file['arr_0'].item()['motion'] # shape:[4,25,6,60]
+    motion = torch.from_numpy(np.array(motion))
+    motion_critic = into_critic(motion) # shape:[4,60,25,3]
+    better, worse = make_pairs(motion_critic, choise)  # shape:[3,60,25,3]
+    return better, worse
+
+
 
 def jointxyz_pairs_from_filename(file_name, choise):
-    better_loc = []
-    worse_loc = []
+    # Loading from: MotionCritic/datasets
     npz_file = np.load(os.path.join(motion_location, file_name), allow_pickle=True)
     motion = npz_file['arr_0'].item()['motion'] # shape:[batch_size,25,6,60]
 
@@ -249,7 +411,7 @@ def jointxyz_pairs_from_filename(file_name, choise):
                        jointstype='smpl', betas=None, beta=0, glob_rot=None,
                        vertstrans=True)
     # print(f"joints_xyz shape {joints_xyz.shape}") # is [batch_size, 24, 3, 60]
-    joints_xyz = joints_xyz.permute(0, 3, 1, 2)
+    joints_xyz = joints_xyz.permute(0, 3, 1, 2) # [4, 60, 24, 3]
 
     if args.mode == 'mdm':
         if choise == 'A':
@@ -287,8 +449,8 @@ def jointxyz_pairs_from_filename(file_name, choise):
 
 
 
-
 def results_from_filename(file_name, choise, metric):
+    # print(file_name)
     
 
     gt = choose_gt_dataset_from_filename(file_name) # gt shape: [batch_size, 60, 25, 3], axis-angle
@@ -324,19 +486,35 @@ def results_from_filename(file_name, choise, metric):
         return better_AVE, worse_AVE
     
     elif metric == 'PFC':
-        better, worse = jointxyz_pairs_from_filename(file_name, choise)
-        better_PFC = compute_PFC(better)
+        better, worse = jointxyz_pairs_from_filename(file_name, choise) # better shape: [3, 60, 24, 3]
+        better_PFC = compute_PFC(better) # shape [3]
         worse_PFC = compute_PFC(worse)
         return better_PFC, worse_PFC
 
+    # elif metric == 'Model':
+    #     # better_joint, worse_joint = jointxyz_pairs_from_filename(file_name, choise) # better shape: [3, 60, 24, 3]
+    #     # better_rootloc, worse_rootloc = rootloc_pairs_from_filename(file_name, choise)
+    #     # better = torch.cat((better_joint, better_rootloc), axis=2) # shape [3, 60, 25, 3]
+    #     # worse = torch.cat((worse_joint, worse_rootloc), axis=2)
+    #     # better, worse = critic_data_from_filename(file_name, choise) # better shape: [3, 60, 25, 3]
+    #     # val_batch_data = {'motion_better': better.to(device=device), 'motion_worse': worse.to(device=device)}
+    #     val_batch_data = torch.load(os.path.join(PROJ_DIR, f'data/val_dataset_for_metrics/{val_dataset}-fulleval.pth'))
+    #     val_batch_data = {key: value.to(device=device) for key, value in val_batch_data.items()}
+    #     score = model.module.forward(val_batch_data).detach().cpu() # [batch_size, 2]
+    #     val_batch_data = {key: value.detach().cpu() for key, value in val_batch_data.items()}
+    #     # worse_score= get_critic_score(worse)
+    #     return score[:, 0], score[:, 1]
         
 
 
-
-def data_for_table(critic):
-    # less is better!
-    critic_diff = critic[:, 0] - critic[:, 1]
-    acc = torch.mean((critic_diff < 0).float())
+def calc_critic_metric(critic, metric="Model"):
+    critic_diff = critic[:, 0] - critic[:, 1] # better - worse
+    if metric == "Model":
+        # Bigger is better!
+        acc = torch.mean((critic_diff > 0).float())
+    else:
+        # Smaller is better!
+        acc = torch.mean((critic_diff < 0).float())
 
     # each critic has two scores, 0 for the better and 1 for worse.
     # we want that each pair's better score and worse score go softmax to become to probablities, sum=1
@@ -351,17 +529,19 @@ def data_for_table(critic):
 
     # print(f"{critic[:20,:]}")
     probs = F.softmax(critic, dim=1).numpy()
-    probs = probs[:,[1,0]]
+    if metric != "Model":
+        # Smaller is better!
+        probs = probs[:,[1,0]]
     target_np = target.numpy()
     log_loss_value = log_loss(y_true=target_np, y_pred=probs, labels=[0, 1])
     print(f"acc is {acc}, log_loss is {log_loss_value}")
     
     # some of the metrics
-    differences = probs[:,0] - probs[:,1]
-    var = np.var(differences)
-    diffmean = np.mean(differences)
-    bs = brier_score_loss(y_true=target_np, y_prob=probs[:,0])
-    wilcoxon_statistic, p_value = wilcoxon(differences)
+    # differences = probs[:,0] - probs[:,1]
+    # var = np.var(differences)
+    # diffmean = np.mean(differences)
+    # bs = brier_score_loss(y_true=target_np, y_prob=probs[:,0])
+    # wilcoxon_statistic, p_value = wilcoxon(differences)
     # print(f"probs diff mean {diffmean}, var {var}, bs {bs}")
     # print(f" wilconxon {wilcoxon_statistic}, pval {p_value}")
     
@@ -378,56 +558,122 @@ def data_for_table(critic):
 
     # return acc, log_loss_value, roc_auc_value
 
-
+def critic_data_from_json(file_path, output_path):
+    with open(file_path, 'r') as file:
+        data = json.load(file)
+    # better_motion = []
+    # worse_motion = []
+    total_motion = []
+    category_index = {}
+    cnt = 0
+    for file_name, choise in tqdm(data.items()):
+        if choise not in ['A', 'B', 'C', 'D']:
+            continue
+        cat = file_name[:4]
+        idx = file_name.split('-')[2]
+        label = cat + '-' + idx
+        if label not in category_index.keys():
+            category_index[label] = [cnt, cnt+1, cnt+2]
+        else:
+            category_index[label].append(cnt)
+            category_index[label].append(cnt+1)
+            category_index[label].append(cnt+2)
+        cnt += 3
+        better, worse = critic_data_from_filename(file_name, choise) # [3, 60, 25, 3]
+        for i in range(better.shape[0]):
+            total_motion.append({'motion_better': better[i], 'motion_worse': worse[i]})
+    # print(len(category_index.keys()))
+    with open(f'data/mapping/{val_dataset}-fulleval_category.json', 'w') as file:
+        json.dump(category_index, file)
+    print("motion length: ", len(total_motion))
+    print(f"Saving critic data to {output_path}")
+    torch.save(total_motion, output_path)
 
 
 def results_from_json(file_path, metric):
     with open(file_path, 'r') as file:
         data = json.load(file)
     
-    # cut here!
-    # data = data[:100]
-
     better_score = []
     worse_score = []
     cnt = 0
-    for file_name, choise in data.items():
+    
+    for file_name, choise in tqdm(data.items()):
         # if cnt > 14:
         #     continue
-
         if choise not in ['A', 'B', 'C', 'D']:
             continue
-        better_pairscore, worse_pairscore = results_from_filename(file_name, choise, metric)
+        
+        better_pairscore, worse_pairscore = results_from_filename(file_name, choise, metric) # [3] [3]
+        # print(better_pairscore, worse_pairscore)
+        # exit(0)
         better_score.append(better_pairscore)
         worse_score.append(worse_pairscore)
         cnt += 1
-
-
+        
     print(f"scores' lengths are {len(better_score)}")
     better_score = torch.cat(better_score, dim=0)
     worse_score = torch.cat(worse_score, dim=0)
-    
     both_score = torch.stack((better_score, worse_score), dim=1)
-
-    # print(f"better_score shpae {better_score.shape}")
-    # print(f"both_score shape {both_score}")
-
-    return  data_for_table(both_score)
+    
+    
+    return both_score
 
 
 
 # Update the final execution block
 if __name__ == '__main__':
-    if args.mode == 'mdm':
+    
+    # print(f"building gt-xyz data")
+    # build_gt_xyz()
+    # print(f"gt-xyz data built.")
+    
+    if val_dataset == 'mdm':
         file_path = os.path.join(PROJ_DIR, f'metric/metrics_data/marked/mdm-fulleval.json')
+        physics_score = np.load(os.path.join(PROJ_DIR, f'data/mpjpe/mdmval_mpjpe_norm.npy')) # (5823, 3)
     else:
         file_path = os.path.join(PROJ_DIR, f'metric/metrics_data/marked/flame-fulleval.json')
-    print(f"evaluating, mode is {args.mode}, file path is {file_path}")
-    print(f"building gt-xyz data")
-    build_gt_xyz()
-    print(f"gt-xyz data built.")
+        physics_score = np.load(os.path.join(PROJ_DIR, f'data/mpjpe/flame_mpjpe.npy'))
+    print(f"Evaluating, dataset is {val_dataset}, annotation file path is {file_path}")
     
-    metrics = ['Root AVE', 'Root AE', 'Joint AVE', 'Joint AE', 'PFC']
+    val_data_pth = os.path.join(PROJ_DIR, f'data/val_dataset_for_metrics/{val_dataset}-fulleval-fixheight.pth')
+    critic_score_pth =  os.path.join(PROJ_DIR, f'stats/{exp_name}/metric_score_{val_dataset}.npy')
+    
+    
+    if os.path.exists(critic_score_pth):
+        critic_score = torch.from_numpy(np.load(critic_score_pth))
+    else:
+        if not os.path.exists(val_data_pth):
+            critic_data_from_json(file_path, val_data_pth)
+        critic_score = get_val_scores(val_data_pth, output_file=f"metric_score_{val_dataset}.npy")
+    
+    # metric_scores = {}
+    # metrics = ['PFC', 'Model', 'Root AVE', 'Root AE', 'Joint AVE', 'Joint AE', 'phys']
+    metrics = ['phys']
     for metric in metrics:
-        print('metric:', metric)
-        results_from_json(file_path, metric)
+        print('### Calculating Metric:', metric)
+        if metric == 'Model':
+            scores = {'Model': critic_score} # (batch_size, 2)
+        elif metric == 'phys':
+            scores_pen, scores_skate, scores_float = compute_phys(val_data_pth)
+            scores = {
+                'Penetration': torch.from_numpy(scores_pen), 
+                'Skating': torch.from_numpy(scores_skate), 
+                'Floating': torch.from_numpy(scores_float)
+            }
+        else:
+            scores = {metric: results_from_json(file_path, metric)}
+        # metric_scores[metric] = scores.cpu().numpy()
+        # print(f"Scores shape {scores.shape}")
+        
+        # Calculate critic metrics: accuracy, log loss
+        for key, score in scores.items():
+            print('--- Metric:', key)
+            calc_critic_metric(score, metric=key)
+            # Calculate correlation
+            spearman_corr, kendall_tau, pearson_corr, spearman_p, kendall_p, pearson_p = metric_correlation(physics_score, score.numpy(), calc_type="prompt")
+            print("spearman corr: ", spearman_corr, " p: ", spearman_p)
+            print("kendall tau: ", kendall_tau, " p: ", kendall_p)
+            print("pearson corr: ", pearson_corr, " p: ", pearson_p)
+    
+    

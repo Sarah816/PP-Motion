@@ -15,6 +15,7 @@ class Rotation2xyz:
     def __call__(self, x, mask, pose_rep, translation, glob,
                  jointstype, vertstrans, betas=None, beta=0,
                  glob_rot=None, get_rotations_back=False, **kwargs):
+        # pose_rep = "rotvec": x shape [num_frames, 25, 3]
         if pose_rep == "xyz":
             return x
 

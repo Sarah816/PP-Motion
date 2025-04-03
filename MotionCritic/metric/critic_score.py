@@ -19,30 +19,6 @@ import numpy as np
 from scipy.stats import wilcoxon
 from tqdm import tqdm
 
-from correlation import metric_correlation
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-device = torch.device('cuda:0')
-
-
-exp_name = "critic_correct_org_lr3.5e-5_singlegpu"
-
-val_dataset = "flame"
-val_pth_name = f"mlist_{val_dataset}.pth"
-
-
-model = MotionCritic(phys_bypass=False, depth=3, dim_feat=256, dim_rep=512, mlp_ratio=4)
-model = torch.nn.DataParallel(model)
-model.to(device)
-
-# load pretrained model
-checkpoint = torch.load(os.path.join(PROJ_DIR,f'output/{exp_name}/checkpoint_latest.pth'), map_location=device)
-print('Checkpoint epoch: ', checkpoint['epoch'])
-
-# checkpoint = torch.load(os.path.join(PROJ_DIR,f'pretrained/motioncritic_pre.pth'), map_location=device)
-# Load the model and optimizer
-model.load_state_dict(checkpoint['model_state_dict'])
-
 
 def metric_func(critic):
     # critic's shape is [batch_size,2]
@@ -88,6 +64,11 @@ def metric_func(critic):
 
     # return acc.item(), log_loss_value, roc_auc_value
 
+# scores = np.load("stats/norm_lossplcc_perprompt_phys0.3/metric_score_mdm.npy") # (5823, 2)
+# scores = np.load("stats/norm_lossplcc_perprompt_phys0.3_mdmval.npy")
+# print(scores[:20])
+# exit(0)
+# metric_func(torch.from_numpy(scores))
 
 class motion_pair_dataset(Dataset):
     def __init__(self, motion_pair_list_name):
@@ -99,33 +80,68 @@ class motion_pair_dataset(Dataset):
     def __len__(self):
         return len(self.data)
     
+# TODO: refactor
 
-val_pth = os.path.join(PROJ_DIR, 'data/'+ val_pth_name)
-print(f"val_pth is {val_pth}")
-val_motion_pairs = motion_pair_dataset(motion_pair_list_name=val_pth)
-val_loader = DataLoader(val_motion_pairs, batch_size=32, shuffle=False, num_workers=8, pin_memory=True, prefetch_factor=2)
+device = torch.device('cuda:0')
+# exp_name = "critic_correct_org_lr3.5e-5_singlegpu"
+exp_name = "norm_lossplcc_perprompt_phys0.3"
+ckp = "checkpoint_latest"
 
+model = MotionCritic(phys_bypass=False, depth=3, dim_feat=256, dim_rep=512, mlp_ratio=4)
+model = torch.nn.DataParallel(model)
+model.to(device)
 
-all_scores = []
-for val_batch_data in tqdm(val_loader):
-    # print(f"model is on {model.module.device}")
-    val_batch_data = {key: value.to(device=device) for key, value in val_batch_data.items()}
-    scores = model.module.forward(val_batch_data)
-    # print(f"scores' shape is {scores.shape}")
-    all_scores.append(scores.detach().cpu())
-    scores.detach().cpu()
+# load pretrained model
+checkpoint = torch.load(os.path.join(PROJ_DIR,f'output/{exp_name}/{ckp}.pth'), map_location=device)
+print('Checkpoint epoch: ', checkpoint['epoch'])
 
-all_scores = torch.cat(all_scores, dim=0)
-# print(f"all_scores' shape {all_scores.shape}")
-# np.save(f"stats/{exp_name}_{val_dataset}.npy", all_scores.numpy())
-# np.save(f"stats/pretrained_mdmval.npy", all_scores.numpy())
-# print(f"all_scores' mean {torch.mean(all_scores)}")
+# checkpoint = torch.load(os.path.join(PROJ_DIR,f'pretrained/motioncritic_pre.pth'), map_location=device)
+# Load the model and optimizer
+model.load_state_dict(checkpoint['model_state_dict'])
 
 
-metric_func(all_scores)
+def get_val_scores(val_pth, output_file):
+    
+    print("Loading val motion data from: ", val_pth)
+    val_motion_pairs = motion_pair_dataset(motion_pair_list_name=val_pth)
+    val_loader = DataLoader(val_motion_pairs, batch_size=16, shuffle=False, num_workers=8, pin_memory=True, prefetch_factor=2)
 
-# physics_score= np.load(f"data/mpjpe/{val_dataset}_mpjpe.npy")
-# spearman_corr, kendall_tau, pearson_corr, spearman_p, kendall_p, pearson_p = metric_correlation(all_scores.numpy(), physics_score, calc_type="prompt")
-# print("spearman corr: ", spearman_corr, " p: ", spearman_p)
-# print("kendall tau: ", kendall_tau, " p: ", kendall_p)
-# print("pearson corr: ", pearson_corr, " p: ", pearson_p)
+    all_scores = []
+    for val_batch_data in tqdm(val_loader):
+        # print(f"model is on {model.module.device}")
+        val_batch_data = {key: value.to(device=device) for key, value in val_batch_data.items()} # ['motion_better', 'motion_worse'], val_batch_data['motion_better'] shape [batch_size, 60, 25, 3]
+        scores = model.module.forward(val_batch_data) # [batch_size, 2]
+        all_scores.append(scores.detach().cpu())
+        scores.detach().cpu()
+
+    all_scores = torch.cat(all_scores, dim=0)
+    os.makedirs(f"stats/{exp_name}", exist_ok=True)
+    print("Saving val scores to: ", f"stats/{exp_name}/{output_file}")
+    np.save(f"stats/{exp_name}/{output_file}", all_scores.numpy())
+    return all_scores
+
+
+
+if __name__ == "__main__":
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+    val_dataset = "flame"
+    val_pth_name = f"mlist_{val_dataset}.pth"
+    val_pth = os.path.join(PROJ_DIR, 'data/'+ val_pth_name)
+
+
+    all_scores = get_val_scores(val_pth, output_file=val_dataset)
+    # print(f"all_scores' shape {all_scores.shape}")
+    # np.save(f"stats/{exp_name}_{val_dataset}.npy", all_scores.numpy())
+    # np.save(f"stats/pretrained_mdmval.npy", all_scores.numpy())
+    # print(f"all_scores' mean {torch.mean(all_scores)}")
+
+
+    metric_func(all_scores)
+
+    # physics_score= np.load(f"data/mpjpe/{val_dataset}_mpjpe.npy")
+    # spearman_corr, kendall_tau, pearson_corr, spearman_p, kendall_p, pearson_p = metric_correlation(all_scores.numpy(), physics_score, calc_type="prompt")
+    # print("spearman corr: ", spearman_corr, " p: ", spearman_p)
+    # print("kendall tau: ", kendall_tau, " p: ", kendall_p)
+    # print("pearson corr: ", pearson_corr, " p: ", pearson_p)

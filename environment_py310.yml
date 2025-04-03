@@ -157,3 +157,5 @@ dependencies:
       - wcwidth
       - werkzeug
       - clip
+      - pytorch3d
+      - torchsort
