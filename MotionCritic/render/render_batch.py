@@ -1,4 +1,4 @@
-from render.render import render_multi
+from render.render import render_multi, render_single
 import os
 import torch
 import argparse
@@ -8,17 +8,23 @@ sys.path.append(PROJ_DIR)
 # Initialize argparse
 parser = argparse.ArgumentParser(description='myparser')
 
-parser.add_argument('--folder', type=str, default=None,
-                    help='Path to the saved model checkpoint to load (default: None)')
+parser.add_argument('--data_path', type=str, default=None)
+
+parser.add_argument('--output_path', type=str, default=None)
 
 parser.add_argument('--gpu_index', type=int, default=None,
                     help='Index of the GPU to use (default: 0)')
+
+parser.add_argument('--render_index', type=int, nargs='+', default=[0])
 
 parser.add_argument('--exclude_gt', action='store_true',
                     help='Initiate a bigger model')
 
 parser.add_argument('--no_comment', action='store_true',
                     help='Initiate a bigger model')
+
+parser.add_argument('--render_folder', action='store_true')
+
 
 
 args = parser.parse_args()
@@ -61,10 +67,30 @@ def render_file(filename, no_comment=False):
     
     render_multi(check_list.to(device), device, comment_list, path_list, no_comment=no_comment)
 
+def render_dataset(filename, output_path, index, no_comment=True, options=['worse']):
+    data = torch.load(filename, map_location=device)
+    for i in index:
+        # motion_worse = data[i]['motion_worse']
+        if 'better' in options:
+            motion = data[i]['motion_better'] # [60, 25, 3]
+            motion = motion.permute(1, 2, 0).unsqueeze(dim=0) # [batch_size, 25, 3, num_frames=60]
+            output_file = f"{output_path}/motion_better_{i}.mp4"
+            render_single(motion.to(device), device, comment='', 
+                          file_path=output_file, pose_format='rotvec', no_comment=no_comment)
+        if 'worse' in options:
+            motion = data[i]['motion_worse'] # [60, 25, 3]
+            motion = motion.permute(1, 2, 0).unsqueeze(dim=0) # [batch_size, 25, 3, num_frames=60]
+            output_file = f"{output_path}/motion_worse_{i}.mp4"
+            render_single(motion.to(device), device, comment='', 
+                          file_path=output_file, pose_format='rotvec', no_comment=no_comment)
+        
 
-
-
-files = file_from_folder(os.path.join(PROJ_DIR, args.folder))
-print(f"files are {files}, device is {device}")
-for file in files:
-    render_file(os.path.join(os.path.join(PROJ_DIR, args.folder), file), no_comment=no_comment)
+if args.render_folder:
+    files = file_from_folder(os.path.join(PROJ_DIR, args.data_path))
+    print(f"files are {files}, device is {device}")
+    for file in files:
+        render_file(os.path.join(os.path.join(PROJ_DIR, args.data_path), file), no_comment=no_comment)
+else:
+    render_dataset(filename=args.data_path, 
+                   output_path=args.output_path , index=args.render_index,
+                   no_comment=True)

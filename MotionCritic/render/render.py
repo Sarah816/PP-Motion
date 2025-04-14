@@ -67,7 +67,7 @@ def wrap_text(comment):
 
     return lines
 
-def render_single(motion, device, comment, file_path, no_comment=False, isYellow=True):
+def render_single(motion, device, comment, file_path, pose_format="rot6d", no_comment=False, isYellow=True):
     # if os.path.exists(file_path):
     #     print(f"File {file_path} already exists. Skipping rendering.")
     #     return
@@ -78,9 +78,9 @@ def render_single(motion, device, comment, file_path, no_comment=False, isYellow
     faces = rot2xyz.smpl_model.faces
 
     vertices = rot2xyz(motion, mask=None,
-                       pose_rep='rot6d', translation=True, glob=True,
+                       pose_rep=pose_format, translation=True, glob=True,
                        jointstype='vertices', betas=None, beta=0, glob_rot=None,
-                       vertstrans=True)
+                       vertstrans=True) # [1,6890,3,num_frames]
 
     frames = 60
     MINS = torch.min(torch.min(vertices[0], dim=0)[0], dim=1)[0]
@@ -170,11 +170,18 @@ def render_single(motion, device, comment, file_path, no_comment=False, isYellow
                 text_position = (text_position[0], text_position[1] + 40)
         if not isYellow:
             color_cv = cv2.cvtColor(color_cv, cv2.COLOR_BGR2RGBA)
+        
+        # Save image
+        image_folder = file_path[:-4]
+        if not os.path.exists(image_folder):
+            os.makedirs(image_folder)
+        image_path = f"{image_folder}/{i}.png"  # You can change this to your desired path/name
+        cv2.imwrite(image_path, color_cv)
         vid.append(color_cv)
 
     out = np.stack(vid, axis=0)
-    if no_comment:
-        file_path = file_path[:-4] + "-nocomment.mp4"
+    # if no_comment:
+    #     file_path = file_path[:-4] + "-nocomment.mp4"
 
     directory = os.path.dirname(file_path)
     if not os.path.exists(directory):
@@ -186,8 +193,8 @@ def render_single(motion, device, comment, file_path, no_comment=False, isYellow
     # return cam_pose, polygon_size
 
 
-def render_multi(motions, device, comments, file_paths, no_comment=False, isYellow=True):
+def render_multi(motions, device, comments, file_paths, pose_format="rot6d", no_comment=False, isYellow=True):
     # assert len(comments) >= motions.shape[0]
     # assert len(file_paths) >= motions.shape[0]
     for i in range(motions.shape[0]):
-        render_single(motions[i:i+1], device, comments[i], file_paths[i], no_comment=no_comment, isYellow=isYellow)
+        render_single(motions[i:i+1], device, comments[i], file_paths[i], pose_format=pose_format, no_comment=no_comment, isYellow=isYellow)

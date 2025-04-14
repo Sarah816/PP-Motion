@@ -23,12 +23,26 @@ from parsedata import into_critic
 from critic_score import get_val_scores
 
 from uhc.smpllib.smpl_eval import compute_phys_metrics
+import pandas as pd
+
+'''
+# 读取 CSV 文件
+df_k = pd.read_csv('stats/metric_kendall_perprompt.csv')
+df_p = pd.read_csv('stats/metric_pearson_perprompt.csv')
+df_s = pd.read_csv('stats/metric_spearman_perprompt.csv')
+# 保存为 Excel 文件
+df_s.to_excel('stats/metric_spearman_perprompt.xlsx', index=True, sheet_name='spearman_corr', float_format="%.4f") 
+df_p.to_excel('stats/metric_pearson_perprompt.xlsx', index=True, sheet_name='pearson_corr', float_format="%.4f") 
+df_k.to_excel('stats/metric_kendall_perprompt.xlsx', index=True, sheet_name='kendall_corr', float_format="%.4f") 
+exit(0)
+'''
+
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Motion Critic Evaluation')
-    parser.add_argument('--mode', type=str, choices=['mdm', 'flame'], 
-                       default='mdm',
+    parser.add_argument('--mode', type=str, choices=['mdmval', 'flame'], 
+                       default='mdmval',
                        required=False,
                        help='Evaluation mode: mdm or flame')
     parser.add_argument('--exp_name', type=str, 
@@ -39,6 +53,8 @@ def parse_args():
     parser.add_argument('--device_id', type=str, 
                        required=False,
                        default='0',)
+    parser.add_argument('--calc_perprompt', action='store_true',
+                        help='calculate metrics per prompt')
     return parser.parse_args()
 
 
@@ -57,8 +73,6 @@ gt_flamexyz = torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/flame-gt-jointx
 # os.environ["CUDA_VISIBLE_DEVICES"] = args.device_id
 device = torch.device(f'cuda:0')
 
-exp_name = args.exp_name
-checkpoint = args.checkpoint
 val_dataset = args.mode
 
 # read all motions from files
@@ -91,7 +105,10 @@ def visualize_vertices(vertices, title):
     plt.close()
     # exit(0)
 
-def get_vertices(motion, fix_height=False):
+def get_vertices(motion, fix_height=True):
+    '''
+    return vertices in z-up coordinate system
+    '''
     # motion: [batch_size, num_frames=60, 25, 3]
     # motion: [batch_size, 25, 3, num_frames=60]
     motion = motion.permute(0, 2, 3, 1) # motion: [batch_size, 25, 3, num_frames=60]
@@ -119,6 +136,7 @@ def compute_phys(dataset_pth):
     compute_skate = []
     compute_float = []
     for i in tqdm(range(len(dataset))):
+    # for i in tqdm(range(100)):
         item = dataset[i]
         # motion_better = item['motion_better'].squeeze(dim=0)
         # motion_worse = item['motion_worse'].squeeze(dim=0)
@@ -131,6 +149,8 @@ def compute_phys(dataset_pth):
         compute_pen.append(np.array([metric_better["penetration"], metric_worse["penetration"]]))
         compute_skate.append(np.array([metric_better["skate"], metric_worse["skate"]]))
         compute_float.append(np.array([metric_better["float"], metric_worse["float"]]))
+        # print(compute_pen, compute_skate, compute_float)
+        # exit(0)
     compute_pen = np.stack(compute_pen, axis=0)
     compute_skate = np.stack(compute_skate, axis=0)
     compute_float = np.stack(compute_float, axis=0)
@@ -145,7 +165,7 @@ def compute_phys(dataset_pth):
 # Instead, use args.mode throughout the code
 
 def choose_gt_dataset_from_filename(file_name):
-    if args.mode == 'mdm':
+    if args.mode == 'mdmval':
         action_class = extract_number_from_filename(file_name)
         if file_name[3] == 'a':
             return gt_humanact12[action_class]
@@ -170,7 +190,7 @@ def extract_number_from_filename(file_name):
         return None
 
 def choose_gt_dataset_from_filename(file_name):
-    if args.mode == 'mdm':
+    if args.mode == 'mdmval':
         action_class = extract_number_from_filename(file_name)
 
         if file_name[3] == 'a':
@@ -183,7 +203,7 @@ def choose_gt_dataset_from_filename(file_name):
     
 
 def choose_gtxyz_dataset_from_filename(file_name):
-    if args.mode == 'mdm':
+    if args.mode == 'mdmval':
         action_class = extract_number_from_filename(file_name)
 
         if file_name[3] == 'a':
@@ -198,7 +218,7 @@ def choose_gtxyz_dataset_from_filename(file_name):
 def build_gt_xyz():
     device = 'cpu'
     rot2xyz = Rotation2xyz(device=device)
-    if args.mode == 'mdm':
+    if args.mode == 'mdmval':
         global gt_humanact12xyz
         global gt_uestcxyz
         for gt in tqdm(gt_humanact12):
@@ -314,7 +334,7 @@ def rootloc_pairs_from_filename(file_name, choise):
     root_loc = torch.from_numpy(motion[:,:,24:25,0:3]) # shape:[batch_size,60,1,3], batch_size=1
     # print(f"file {file_name}, motion shape {type(root_loc)} {root_loc.shape}, choice {choise}")
 
-    if args.mode == 'mdm':
+    if args.mode == 'mdmval':
         if choise == 'A':
             better_loc = [root_loc[0], root_loc[0], root_loc[0]]
             worse_loc = [root_loc[1], root_loc[2], root_loc[3]]
@@ -352,7 +372,7 @@ def rootloc_pairs_from_filename(file_name, choise):
 def make_pairs(joints_xyz, choise):
     # data.shape[0] is 4 (4 data in a batch)
     
-    if args.mode == 'mdm':
+    if args.mode == 'mdmval':
         if choise == 'A':
             better_xyz = [joints_xyz[0], joints_xyz[0], joints_xyz[0]]
             worse_xyz = [joints_xyz[1], joints_xyz[2], joints_xyz[3]]
@@ -389,12 +409,14 @@ def make_pairs(joints_xyz, choise):
 
 def critic_data_from_filename(file_name, choise):
     npz_file = np.load(os.path.join(motion_location, file_name), allow_pickle=True)
+    prompt = npz_file['arr_0'].item()['prompt']
+    with open("data/mapping/flame_fulleval_prompt.txt", 'a') as f:
+        f.write(f"{prompt}\n{prompt}\n{prompt}\n")
     motion = npz_file['arr_0'].item()['motion'] # shape:[4,25,6,60]
     motion = torch.from_numpy(np.array(motion))
     motion_critic = into_critic(motion) # shape:[4,60,25,3]
     better, worse = make_pairs(motion_critic, choise)  # shape:[3,60,25,3]
     return better, worse
-
 
 
 def jointxyz_pairs_from_filename(file_name, choise):
@@ -413,7 +435,7 @@ def jointxyz_pairs_from_filename(file_name, choise):
     # print(f"joints_xyz shape {joints_xyz.shape}") # is [batch_size, 24, 3, 60]
     joints_xyz = joints_xyz.permute(0, 3, 1, 2) # [4, 60, 24, 3]
 
-    if args.mode == 'mdm':
+    if args.mode == 'mdmval':
         if choise == 'A':
             better_xyz = [joints_xyz[0], joints_xyz[0], joints_xyz[0]]
             worse_xyz = [joints_xyz[1], joints_xyz[2], joints_xyz[3]]
@@ -448,12 +470,32 @@ def jointxyz_pairs_from_filename(file_name, choise):
     return better_xyz, worse_xyz
 
 
-
 def results_from_filename(file_name, choise, metric):
-    # print(file_name)
     
 
     gt = choose_gt_dataset_from_filename(file_name) # gt shape: [batch_size, 60, 25, 3], axis-angle
+    # root_better, root_worse = rootloc_pairs_from_filename(file_name, choise)
+    # joint_better, joint_worse = jointxyz_pairs_from_filename(file_name, choise)
+    gt_loc = gt.permute(0,3,1,2)[:,:,24:25,0:3]
+    # gt_xyz = choose_gtxyz_dataset_from_filename(file_name)
+    # joint_better, joint_worse = joint_better.to(device), joint_worse.to(device)
+    # gt_xyz = gt_xyz.to(device)
+    
+    # better_root_AE = compute_AE(root_better, gt_loc)
+    # worse_root_AE = compute_AE(root_worse, gt_loc)
+    # better_root_AVE = compute_AVE(root_better, gt_loc)
+    # worse_root_AVE = compute_AVE(root_worse, gt_loc)
+    
+    # better_joint_AE = compute_AE(joint_better, gt_xyz).cpu()
+    # worse_joint_AE = compute_AE(joint_worse, gt_xyz).cpu()
+    # better_joint_AVE = compute_AVE(joint_better, gt_xyz).cpu()
+    # worse_joint_AVE = compute_AVE(joint_worse, gt_xyz).cpu()
+    
+    # better_PFC = compute_PFC(joint_better).cpu() # shape [3]
+    # worse_PFC = compute_PFC(joint_worse).cpu()
+    
+    
+
     if metric == 'Root AE':
         better, worse = rootloc_pairs_from_filename(file_name, choise)
         # gt_loc = gt[:,:,24:25,:] # changed
@@ -474,42 +516,33 @@ def results_from_filename(file_name, choise, metric):
     elif metric == 'Joint AE':
         better, worse = jointxyz_pairs_from_filename(file_name, choise)
         gt_xyz = choose_gtxyz_dataset_from_filename(file_name)
+        better = better.to(device)
+        worse = worse.to(device)
+        gt_xyz = gt_xyz.to(device)
         better_AE = compute_AE(better, gt_xyz)
         worse_AE = compute_AE(worse, gt_xyz)
-        return better_AE, worse_AE
+        return better_AE.cpu(), worse_AE.cpu()
     
     elif metric == 'Joint AVE':
         better, worse = jointxyz_pairs_from_filename(file_name, choise)
         gt_xyz = choose_gtxyz_dataset_from_filename(file_name)
+        better = better.to(device)
+        worse = worse.to(device)
+        gt_xyz = gt_xyz.to(device)
         better_AVE = compute_AVE(better, gt_xyz)
         worse_AVE = compute_AVE(worse, gt_xyz)
-        return better_AVE, worse_AVE
+        return better_AVE.cpu(), worse_AVE.cpu()
     
     elif metric == 'PFC':
         better, worse = jointxyz_pairs_from_filename(file_name, choise) # better shape: [3, 60, 24, 3]
         better_PFC = compute_PFC(better) # shape [3]
         worse_PFC = compute_PFC(worse)
         return better_PFC, worse_PFC
-
-    # elif metric == 'Model':
-    #     # better_joint, worse_joint = jointxyz_pairs_from_filename(file_name, choise) # better shape: [3, 60, 24, 3]
-    #     # better_rootloc, worse_rootloc = rootloc_pairs_from_filename(file_name, choise)
-    #     # better = torch.cat((better_joint, better_rootloc), axis=2) # shape [3, 60, 25, 3]
-    #     # worse = torch.cat((worse_joint, worse_rootloc), axis=2)
-    #     # better, worse = critic_data_from_filename(file_name, choise) # better shape: [3, 60, 25, 3]
-    #     # val_batch_data = {'motion_better': better.to(device=device), 'motion_worse': worse.to(device=device)}
-    #     val_batch_data = torch.load(os.path.join(PROJ_DIR, f'data/val_dataset_for_metrics/{val_dataset}-fulleval.pth'))
-    #     val_batch_data = {key: value.to(device=device) for key, value in val_batch_data.items()}
-    #     score = model.module.forward(val_batch_data).detach().cpu() # [batch_size, 2]
-    #     val_batch_data = {key: value.detach().cpu() for key, value in val_batch_data.items()}
-    #     # worse_score= get_critic_score(worse)
-    #     return score[:, 0], score[:, 1]
         
 
-
-def calc_critic_metric(critic, metric="Model"):
+def calc_critic_metric(critic, metric):
     critic_diff = critic[:, 0] - critic[:, 1] # better - worse
-    if metric == "Model":
+    if metric == "Model" or metric == "MotionCritic":
         # Bigger is better!
         acc = torch.mean((critic_diff > 0).float())
     else:
@@ -529,12 +562,13 @@ def calc_critic_metric(critic, metric="Model"):
 
     # print(f"{critic[:20,:]}")
     probs = F.softmax(critic, dim=1).numpy()
-    if metric != "Model":
+    if metric != "Model" and metric != "MotionCritic":
         # Smaller is better!
         probs = probs[:,[1,0]]
     target_np = target.numpy()
     log_loss_value = log_loss(y_true=target_np, y_pred=probs, labels=[0, 1])
-    print(f"acc is {acc}, log_loss is {log_loss_value}")
+    # print(f"acc is {acc}, log_loss is {log_loss_value}")
+    return acc.item(), log_loss_value
     
     # some of the metrics
     # differences = probs[:,0] - probs[:,1]
@@ -569,22 +603,24 @@ def critic_data_from_json(file_path, output_path):
     for file_name, choise in tqdm(data.items()):
         if choise not in ['A', 'B', 'C', 'D']:
             continue
-        cat = file_name[:4]
-        idx = file_name.split('-')[2]
-        label = cat + '-' + idx
-        if label not in category_index.keys():
-            category_index[label] = [cnt, cnt+1, cnt+2]
-        else:
-            category_index[label].append(cnt)
-            category_index[label].append(cnt+1)
-            category_index[label].append(cnt+2)
-        cnt += 3
+        if file_name.startswith("mdm"):
+            cat = file_name[:4]
+            idx = file_name.split('-')[2]
+            label = cat + '-' + idx
+            if label not in category_index.keys():
+                category_index[label] = [cnt, cnt+1, cnt+2]
+            else:
+                category_index[label].append(cnt)
+                category_index[label].append(cnt+1)
+                category_index[label].append(cnt+2)
+            cnt += 3
         better, worse = critic_data_from_filename(file_name, choise) # [3, 60, 25, 3]
         for i in range(better.shape[0]):
             total_motion.append({'motion_better': better[i], 'motion_worse': worse[i]})
     # print(len(category_index.keys()))
-    with open(f'data/mapping/{val_dataset}-fulleval_category.json', 'w') as file:
-        json.dump(category_index, file)
+    if len(category_index) != 0:
+        with open(f'data/mapping/{val_dataset}-fulleval_category.json', 'w') as file:
+            json.dump(category_index, file)
     print("motion length: ", len(total_motion))
     print(f"Saving critic data to {output_path}")
     torch.save(total_motion, output_path)
@@ -619,41 +655,67 @@ def results_from_json(file_path, metric):
     
     return both_score
 
-
+np.set_printoptions(precision=2, suppress=True)
 
 # Update the final execution block
 if __name__ == '__main__':
     
-    # print(f"building gt-xyz data")
-    # build_gt_xyz()
-    # print(f"gt-xyz data built.")
+    if not (os.path.exists("data/gt-packed/flame-gt-jointxyz.pt") and os.path.exists("data/gt-packed/uestc-gt-jointxyz.pt") and os.path.exists("data/gt-packed/humanact12-gt-jointxyz.pt")):
+        print(f"building gt-xyz data")
+        build_gt_xyz()
+        print(f"gt-xyz data built.")
     
-    if val_dataset == 'mdm':
+    exp_name = args.exp_name
+    checkpoint = args.checkpoint
+    
+    if val_dataset == 'mdmval':
         file_path = os.path.join(PROJ_DIR, f'metric/metrics_data/marked/mdm-fulleval.json')
         physics_score = np.load(os.path.join(PROJ_DIR, f'data/mpjpe/mdmval_mpjpe_norm.npy')) # (5823, 3)
     else:
         file_path = os.path.join(PROJ_DIR, f'metric/metrics_data/marked/flame-fulleval.json')
-        physics_score = np.load(os.path.join(PROJ_DIR, f'data/mpjpe/flame_mpjpe.npy'))
+        physics_score = np.load(os.path.join(PROJ_DIR, f'data/mpjpe/flame_fulleval_mpjpe.npy'))
     print(f"Evaluating, dataset is {val_dataset}, annotation file path is {file_path}")
     
-    val_data_pth = os.path.join(PROJ_DIR, f'data/val_dataset_for_metrics/{val_dataset}-fulleval-fixheight.pth')
-    critic_score_pth =  os.path.join(PROJ_DIR, f'stats/{exp_name}/metric_score_{val_dataset}.npy')
+    val_data_pth = os.path.join(PROJ_DIR, f'data/val_dataset_for_metrics/{val_dataset}-fulleval.pth')
+    model_score_pth = os.path.join(PROJ_DIR, f'data/scores/{exp_name}/score_{val_dataset}_{checkpoint}.npy')
+    mocritic_score_pth = os.path.join(PROJ_DIR, f'data/scores/mocritic_pretrained/score_{val_dataset}_mocritic_pre.npy')
     
+    if not os.path.exists(val_data_pth):
+        print(f"***Processing val dataset***")
+        critic_data_from_json(file_path, val_data_pth)
     
-    if os.path.exists(critic_score_pth):
-        critic_score = torch.from_numpy(np.load(critic_score_pth))
+    if not os.path.exists(model_score_pth):
+        print(f"***Calculating ours model score***")
+        model_score = get_val_scores(val_data_pth, output_pth=model_score_pth, exp_name=exp_name, ckp=checkpoint)
     else:
-        if not os.path.exists(val_data_pth):
-            critic_data_from_json(file_path, val_data_pth)
-        critic_score = get_val_scores(val_data_pth, output_file=f"metric_score_{val_dataset}.npy")
+        model_score = torch.from_numpy(np.load(model_score_pth))
     
-    # metric_scores = {}
-    # metrics = ['PFC', 'Model', 'Root AVE', 'Root AE', 'Joint AVE', 'Joint AE', 'phys']
-    metrics = ['phys']
+    if not os.path.exists(mocritic_score_pth):
+        print(f"***Calculating MotionCritic score***")
+        mocritic_score = get_val_scores(val_data_pth, output_pth=mocritic_score_pth, exp_name="mocritic_pretrained", ckp="mocritic_pre")
+    else:
+        mocritic_score = torch.from_numpy(np.load(mocritic_score_pth))
+    
+    
+    if args.calc_perprompt:
+        with open("data/mapping/mdm-fulleval_category.json") as f:
+            mdm_category_to_idx = json.load(f)
+        humanact12_keys = ["mdma-00", "mdma-01", "mdma-02", "mdma-03", "mdma-04", "mdma-05", "mdma-06", "mdma-07", "mdma-08", "mdma-09", "mdma-10", "mdma-11"]
+    # df_spearman = pd.DataFrame(columns=humanact12_keys)
+    # df_kendall = pd.DataFrame(columns=humanact12_keys)
+    # df_pearson = pd.DataFrame(columns=humanact12_keys)
+    df_spearman = pd.read_csv('stats/metric_spearman_perprompt.csv', index_col=0)
+    df_kendall = pd.read_csv('stats/metric_kendall_perprompt.csv', index_col=0)
+    df_pearson = pd.read_csv('stats/metric_pearson_perprompt.csv', index_col=0)
+    
+    metrics = ['Model', 'MotionCritic', 'Joint AVE', 'Joint AE', 'Root AVE', 'Root AE', 'PFC', 'phys']
+    
     for metric in metrics:
         print('### Calculating Metric:', metric)
         if metric == 'Model':
-            scores = {'Model': critic_score} # (batch_size, 2)
+            scores = {'Model': model_score} # (batch_size, 2)
+        elif metric == "MotionCritic":
+            scores = {'MotionCritic': mocritic_score}
         elif metric == 'phys':
             scores_pen, scores_skate, scores_float = compute_phys(val_data_pth)
             scores = {
@@ -663,17 +725,53 @@ if __name__ == '__main__':
             }
         else:
             scores = {metric: results_from_json(file_path, metric)}
-        # metric_scores[metric] = scores.cpu().numpy()
-        # print(f"Scores shape {scores.shape}")
         
         # Calculate critic metrics: accuracy, log loss
-        for key, score in scores.items():
-            print('--- Metric:', key)
-            calc_critic_metric(score, metric=key)
-            # Calculate correlation
-            spearman_corr, kendall_tau, pearson_corr, spearman_p, kendall_p, pearson_p = metric_correlation(physics_score, score.numpy(), calc_type="prompt")
-            print("spearman corr: ", spearman_corr, " p: ", spearman_p)
-            print("kendall tau: ", kendall_tau, " p: ", kendall_p)
-            print("pearson corr: ", pearson_corr, " p: ", pearson_p)
+        for metric_key, metric_score in scores.items():
+            
+            # 1. Calculate total
+            print(f"evaluating total")
+            acc, log_loss_value = calc_critic_metric(metric_score, metric=metric_key)
+            if val_dataset == "flame":
+                spearman_corr, kendall_tau, pearson_corr = metric_correlation(physics_score, metric_score.numpy(), calc_type="total")
+            else:
+                spearman_corr, kendall_tau, pearson_corr = metric_correlation(physics_score, metric_score.numpy(), calc_type="prompt")
+            if metric_key != "Model" and metric_key != "MotionCritic":
+                spearman_corr, kendall_tau, pearson_corr = -spearman_corr, -kendall_tau, -pearson_corr
+            print({
+                "acc": acc,
+                "log_loss": log_loss_value,
+                "pearson_corr": pearson_corr,
+                "spearman_corr": spearman_corr,
+                "kendall_corr": kendall_tau,
+            })
+            df_spearman.loc[metric_key, 'total'] = spearman_corr
+            df_kendall.loc[metric_key, 'total'] = kendall_tau
+            df_pearson.loc[metric_key, 'total'] = pearson_corr
+            
+            if args.calc_perprompt:
+                # 2. Calculate humanact12 dataset perprompt
+                for label in humanact12_keys:
+                    idxs = mdm_category_to_idx[label]
+                    physics_all = physics_score[idxs]
+                    metrics_all = metric_score[idxs].numpy()
+                    spearman_corr, kendall_tau, pearson_corr = metric_correlation(physics_all, metrics_all, calc_type="total")
+                    if metric_key != "Model" and metric_key != "MotionCritic":
+                        spearman_corr, kendall_tau, pearson_corr = -spearman_corr, -kendall_tau, -pearson_corr
+                    # row: metric_key; column: prompt_label
+                    df_spearman.loc[metric_key, label] = spearman_corr
+                    df_kendall.loc[metric_key, label] = kendall_tau
+                    df_pearson.loc[metric_key, label] = pearson_corr
+            
+                # 3. Calculate uestc dataset
+                print(f"evaluating uestc")
+                spearman_corr, kendall_tau, pearson_corr = metric_correlation(physics_score, metric_score.numpy(), calc_type="prompt", subset="uestc")
+                if metric_key != "Model" and metric_key != "MotionCritic":
+                    spearman_corr, kendall_tau, pearson_corr = -spearman_corr, -kendall_tau, -pearson_corr
+                df_spearman.loc[metric_key, 'mdmu'] = spearman_corr
+                df_kendall.loc[metric_key, 'mdmu'] = kendall_tau
+                df_pearson.loc[metric_key, 'mdmu'] = pearson_corr
     
-    
+    df_spearman.to_csv('stats/metric_spearman_perprompt.csv', float_format='%.3f', index=True)
+    df_kendall.to_csv('stats/metric_kendall_perprompt.csv', float_format='%.3f', index=True)
+    df_pearson.to_csv('stats/metric_pearson_perprompt.csv', float_format='%.3f', index=True)

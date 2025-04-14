@@ -82,28 +82,27 @@ class motion_pair_dataset(Dataset):
     
 # TODO: refactor
 
-device = torch.device('cuda:0')
-# exp_name = "critic_correct_org_lr3.5e-5_singlegpu"
-exp_name = "norm_lossplcc_perprompt_phys0.3"
-ckp = "checkpoint_latest"
 
-model = MotionCritic(phys_bypass=False, depth=3, dim_feat=256, dim_rep=512, mlp_ratio=4)
-model = torch.nn.DataParallel(model)
-model.to(device)
+def get_val_scores(dataset_pth, output_pth, exp_name, ckp="checkpoint_latest"):
 
-# load pretrained model
-checkpoint = torch.load(os.path.join(PROJ_DIR,f'output/{exp_name}/{ckp}.pth'), map_location=device)
-print('Checkpoint epoch: ', checkpoint['epoch'])
+    device = torch.device('cuda:0')
+    # exp_name = "critic_correct_org_lr3.5e-5_singlegpu"
+    # exp_name = "norm_lossplcc_perprompt_phys0.3"
 
-# checkpoint = torch.load(os.path.join(PROJ_DIR,f'pretrained/motioncritic_pre.pth'), map_location=device)
-# Load the model and optimizer
-model.load_state_dict(checkpoint['model_state_dict'])
+    model = MotionCritic(phys_bypass=False, depth=3, dim_feat=256, dim_rep=512, mlp_ratio=4)
+    model = torch.nn.DataParallel(model)
+    model.to(device)
 
+    # load pretrained model
+    checkpoint = torch.load(os.path.join(PROJ_DIR,f'output/{exp_name}/{ckp}.pth'), map_location=device)
+    print('Checkpoint epoch: ', checkpoint['epoch'])
 
-def get_val_scores(val_pth, output_file):
+    # checkpoint = torch.load(os.path.join(PROJ_DIR,f'pretrained/motioncritic_pre.pth'), map_location=device)
+    # Load the model and optimizer
+    model.load_state_dict(checkpoint['model_state_dict'])
     
-    print("Loading val motion data from: ", val_pth)
-    val_motion_pairs = motion_pair_dataset(motion_pair_list_name=val_pth)
+    print("Loading val motion data from: ", dataset_pth)
+    val_motion_pairs = motion_pair_dataset(motion_pair_list_name=dataset_pth)
     val_loader = DataLoader(val_motion_pairs, batch_size=16, shuffle=False, num_workers=8, pin_memory=True, prefetch_factor=2)
 
     all_scores = []
@@ -115,9 +114,9 @@ def get_val_scores(val_pth, output_file):
         scores.detach().cpu()
 
     all_scores = torch.cat(all_scores, dim=0)
-    os.makedirs(f"stats/{exp_name}", exist_ok=True)
-    print("Saving val scores to: ", f"stats/{exp_name}/{output_file}")
-    np.save(f"stats/{exp_name}/{output_file}", all_scores.numpy())
+    os.makedirs(f"data/scores/{exp_name}", exist_ok=True)
+    print("Saving val scores to: ", output_pth)
+    np.save(output_pth, all_scores.numpy())
     return all_scores
 
 
@@ -131,7 +130,7 @@ if __name__ == "__main__":
     val_pth = os.path.join(PROJ_DIR, 'data/'+ val_pth_name)
 
 
-    all_scores = get_val_scores(val_pth, output_file=val_dataset)
+    all_scores = get_val_scores(val_pth, output_pth=val_dataset, exp_name="norm_lossplcc_perprompt_phys0.3")
     # print(f"all_scores' shape {all_scores.shape}")
     # np.save(f"stats/{exp_name}_{val_dataset}.npy", all_scores.numpy())
     # np.save(f"stats/pretrained_mdmval.npy", all_scores.numpy())

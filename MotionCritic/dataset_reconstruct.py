@@ -19,6 +19,8 @@ from tqdm import tqdm
 # np.save("data/mpjpe/mdmval_mpjpe_better.npy", mpjpe_better_new)
 # exit(0)
 
+np.set_printoptions(precision=3, floatmode='fixed', suppress=True)
+
 def get_finetune_subset():
     with open("data/mdmtrain_compare.json") as f:
         match_dataset = json.load(f)
@@ -162,6 +164,46 @@ def hash_array(array, decimals=6):
     # 生成哈希值
     return hash(array_tuple)
 
+def check_duplication():
+    dataset1 = torch.load("data/mlist_flame.pth")
+    dataset2 = torch.load("data/val_dataset_for_metrics/flame-fulleval.pth")
+    data_len = len(dataset1)
+    for i in tqdm(range(data_len)):
+        tensor1 = dataset1[i]["motion_better"]
+        tensor2 = dataset2[i]["motion_better"]
+        same = np.isclose(tensor1, tensor2, rtol=1e-5, atol=1e-8).all()
+        assert(tensor1.shape == tensor2.shape)
+        assert(same)
+        
+
+def map_flame_eval():
+    # dataset1 = torch.load("data/mlist_flame.pth")
+    # dataset2 = torch.load("data/val_dataset_for_metrics/flame-fulleval.pth")
+    # data_len = len(dataset1)
+    # mapping = []
+    # for i in tqdm(range(data_len)):
+    #     tensor1 = dataset1[i]["motion_better"]
+    #     for j in range(data_len):
+    #         tensor2 = dataset2[j]["motion_better"]
+    #         same = np.isclose(tensor1, tensor2, rtol=1e-5, atol=1e-8).all()
+    #         if same:
+    #             mapping.append([i, j])
+    #             worse_same = np.isclose(dataset1[i]["motion_worse"], dataset2[j]["motion_worse"], rtol=1e-5, atol=1e-8).all()
+    #             assert(worse_same)
+    #             break
+    # print(len(mapping)) # 603
+    # with open("data/mapping/flame_compare.json", 'w') as f:
+    #     json.dump(mapping, f)
+    
+    
+    with open("data/mapping/flame_compare.json") as f:
+        mapping = json.load(f)
+    mpjpe = np.load("data/mpjpe/flame_mpjpe.npy")
+    new_mpjpe = np.zeros((603, 2))
+    for index_old, index_new in mapping:
+        new_mpjpe[index_new] = mpjpe[index_old]
+    np.save("data/mpjpe/flame_fulleval_mpjpe.npy", new_mpjpe)
+        
 
 def find_duplicate_indices():
     dataset = torch.load("data/mlist_mdmtrain_corrected.pth")
@@ -227,7 +269,67 @@ def normalize_mpjpe():
     data_norm = - (data - mean) / std # 标准化为mean=0，std=1的数据分布，并且颠倒顺序
     print(np.mean(data_norm), np.std(data_norm))
     np.save("data/mpjpe/mdmval_mpjpe_norm.npy", data_norm)
-    
+
+def normalize_score():
+    mdmval_score = np.load("data/scores/norm_lossplcc_perprompt_phys0.3/score_mdmval_checkpoint_latest.npy")
+    # flame_score = np.load("data/scores/norm_lossplcc_perprompt_phys0.3/score_flame_checkpoint_latest.npy")
+    # total_score = np.concatenate([mdmval_score, flame_score])
+    mdmval_mean = np.mean(mdmval_score)
+    mdmval_std = np.std(mdmval_score)
+    before_ft = (-4.35 - mdmval_mean) / mdmval_std
+    after_ft = (4.09 - mdmval_mean) / mdmval_std
+    print(before_ft, after_ft)
+    # flame_mean = np.mean(flame_score)
+    # flame_std = np.std(flame_score)
+    # mean = np.mean(total_score)
+    # std = np.std(total_score)
+    print(mdmval_mean, mdmval_std)
+    data_norm = (mdmval_score - mdmval_mean) / mdmval_std
+    # np.save("data/scores/norm_lossplcc_perprompt_phys0.3/norm_score_mdmval_checkpoint_latest.npy", data_norm)
+    indexes = [124,450,1853,93,94,95,165,166,167]
+    print(data_norm[indexes])
+
+def dataset_stat():
+    # 统计数据集的均值和标准差
+    data = np.load("data/mpjpe/mdmtrain_mpjpe_corrected.npy")
+    mean = np.mean(data)
+    std = np.std(data)
+    print("Mean: ", mean)
+    print("Std: ", std)
+    print("Max: ", np.max(data))
+    print("Min: ", np.min(data))
+    print("Shape: ", data.shape)
+
+def stat_for_visualize():
+    score = np.load("data/scores/norm_lossplcc_perprompt_phys0.3/score_mdmval_checkpoint_latest.npy")
+    mpjpe = np.load("data/mpjpe/mdmval_mpjpe.npy")
+    np.set_printoptions(precision=2, floatmode='fixed', suppress=True)  # 固定保留2位小数
+    idx = []
+    for i in range(500, 1000):
+        worse1 = score[3*i][1]
+        worse2 = score[3*i+1][1]
+        worse3 = score[3*i+2][1]
+        mpjpe1 = mpjpe[3*i][1]
+        mpjpe2 = mpjpe[3*i+1][1]
+        mpjpe3 = mpjpe[3*i+2][1]
+        std1 = np.var([worse1, worse2, worse3])
+        std2 = np.var([mpjpe1, mpjpe2, mpjpe3])
+        if std1 >= 100 and std2 >= 100:
+            idx.append(3*i)
+            idx.append(3*i+1)
+            idx.append(3*i+2)
+            print(f"worse index: {3*i}")
+            print(f"score: {worse1:.2f}, {worse2:.2f}, {worse3:.2f}")
+            print(f"mpjpe: {mpjpe1:.2f}, {mpjpe2:.2f}, {mpjpe3:.2f}")
+        
+        # if score[i][1] - score[i][0] > 8 and score[i][1] > 3:
+        #     print(i, ': ', score[i])
+        #     idx.append(i)
+        
+        # if 26 < mpjpe[i][1] < 28:
+        #     print(i, ': ', mpjpe[i][0], mpjpe[i][1])
+        #     idx.append(i)
+    print(idx)
     
 if __name__ == "__main__":
     # reconstruct_dataset()
@@ -237,5 +339,9 @@ if __name__ == "__main__":
     # find_duplicate_indices()
     # reconstruct_mpjpe()
     # categorize_by_label()
-    normalize_mpjpe()
+    # normalize_mpjpe()
+    # check_duplication()
+    # dataset_stat()
+    stat_for_visualize()
+    # map_flame_eval()
     

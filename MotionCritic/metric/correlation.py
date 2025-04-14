@@ -56,13 +56,13 @@ def metric_func(critic):
 # print(np.mean(phys))
 # exit(0)
 
-def metric_correlation(critic_score, physics_score, calc_type):
+def metric_correlation(critic_score, physics_score, calc_type, subset=None):
     critic_worse = critic_score[:, 1]
     critic_better = critic_score[:, 0]
     physics_worse = physics_score[:, 1]
     physics_better = physics_score[:, 0]
     val_len = len(critic_score)
-    s_corr, k_corr, p_corr, s_p, k_p, p_p = [],[],[],[],[],[]
+    s_corr, k_corr, p_corr = [],[],[]
     if calc_type == "pair":
         print("---Calculate unit num: 2---")
         for i in tqdm(range(val_len)):
@@ -75,10 +75,7 @@ def metric_correlation(critic_score, physics_score, calc_type):
             s_corr.append(spearman_corr)
             k_corr.append(kendall_tau)
             p_corr.append(pearson_corr)
-            s_p.append(spearman_p)
-            k_p.append(kendall_p)
-            p_p.append(pearson_p)
-        return sum(s_corr)/len(s_corr), sum(k_corr)/len(k_corr), sum(p_corr)/len(p_corr), sum(s_p)/len(s_p), sum(k_p)/len(k_p), sum(p_p)/len(p_p)
+        return sum(s_corr)/len(s_corr), sum(k_corr)/len(k_corr), sum(p_corr)/len(p_corr)
     
     elif calc_type == "quat":
         print("---Calculate unit num: 4---")
@@ -93,10 +90,7 @@ def metric_correlation(critic_score, physics_score, calc_type):
             s_corr.append(spearman_corr)
             k_corr.append(kendall_tau)
             p_corr.append(pearson_corr)
-            s_p.append(spearman_p)
-            k_p.append(kendall_p)
-            p_p.append(pearson_p)
-        return sum(s_corr)/len(s_corr), sum(k_corr)/len(k_corr), sum(p_corr)/len(p_corr), sum(s_p)/len(s_p), sum(k_p)/len(k_p), sum(p_p)/len(p_p)
+        return sum(s_corr)/len(s_corr), sum(k_corr)/len(k_corr), sum(p_corr)/len(p_corr)
     
     elif calc_type == "batch":
         print("---Calculate unit: batch---")
@@ -117,41 +111,38 @@ def metric_correlation(critic_score, physics_score, calc_type):
             s_corr.append(spearman_corr)
             k_corr.append(kendall_tau)
             p_corr.append(pearson_corr)
-            s_p.append(spearman_p)
-            k_p.append(kendall_p)
-            p_p.append(pearson_p)
-        return sum(s_corr)/len(s_corr), sum(k_corr)/len(k_corr), sum(p_corr)/len(p_corr), sum(s_p)/len(s_p), sum(k_p)/len(k_p), sum(p_p)/len(p_p)
+        return sum(s_corr)/len(s_corr), sum(k_corr)/len(k_corr), sum(p_corr)/len(p_corr)
     
     elif calc_type == "prompt":
-        print("---Calculate unit: prompt---")
-        with open("data/mapping/mdmval_category.json") as f:
+        # print("---Calculate unit: prompt---")
+        with open("data/mapping/mdm-fulleval_category.json") as f: # TODO: refactor
             category_to_idx = json.load(f)
         for cate, idxs in category_to_idx.items():
+            if subset == "uestc":
+                if cate.startswith("mdma"):
+                    continue
             idxs = np.array(idxs, dtype=int)
-            critic_all = np.concatenate((critic_better[idxs],
-                                        critic_worse[idxs]))
-            physics_all = np.concatenate((physics_better[idxs],
-                                        physics_worse[idxs]))
-            # print(cate, np.mean(physics_all))
-            
+            critic_all = critic_score[idxs].reshape(-1)
+            physics_all = physics_score[idxs].reshape(-1)
+            assert(critic_all.shape == physics_all.shape)
             spearman_corr, spearman_p = spearmanr(critic_all, physics_all)
             kendall_tau, kendall_p = kendalltau(critic_all, physics_all)
             pearson_corr, pearson_p = pearsonr(critic_all, physics_all)
             s_corr.append(spearman_corr)
             k_corr.append(kendall_tau)
             p_corr.append(pearson_corr)
-            s_p.append(spearman_p)
-            k_p.append(kendall_p)
-            p_p.append(pearson_p)
-        return sum(s_corr)/len(s_corr), sum(k_corr)/len(k_corr), sum(p_corr)/len(p_corr), sum(s_p)/len(s_p), sum(k_p)/len(k_p), sum(p_p)/len(p_p)
+        return sum(s_corr)/len(s_corr), sum(k_corr)/len(k_corr), sum(p_corr)/len(p_corr)
     
     elif calc_type == "total":
-        critic_all = np.concatenate((critic_better[::3], critic_worse)) # 只取不重复数据
-        physics_all = np.concatenate((physics_better[::3], physics_worse))
+        # critic_all = np.concatenate((critic_better[::3], critic_worse)) # 只取不重复数据
+        # physics_all = np.concatenate((physics_better[::3], physics_worse))
+        critic_all = critic_score.reshape(-1)
+        physics_all = physics_score.reshape(-1)
+        assert(critic_all.shape == physics_all.shape)
         spearman_corr, spearman_p = spearmanr(critic_all, physics_all)
         kendall_tau, kendall_p = kendalltau(critic_all, physics_all)
         pearson_corr, pearson_p = pearsonr(critic_all, physics_all)
-        return spearman_corr, kendall_tau, pearson_corr, spearman_p, kendall_p, pearson_p
+        return spearman_corr, kendall_tau, pearson_corr
 
 
 if __name__ == "__main__":
