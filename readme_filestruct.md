@@ -1,5 +1,5 @@
 ```
-MotionCritic/
+PP-Motion/
 ├── MDMCritic/                   
 ├── MotionCritic/      
 │   ├── train.sh
