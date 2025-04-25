@@ -1,6 +1,5 @@
 ```
-MotionCritic/
-├── MDMCritic/                   
+MotionCritic/                   
 ├── MotionCritic/      
 │   ├── train.sh
 │   ├── metrics.sh
@@ -21,5 +20,5 @@ MotionCritic/
 │       └── mlist_mdmval.pth                 # Validation dataset, same as mdmval-fulleval.pth
 │   ├── output/             # Checkpoints
 │   └── stats/              # Metric statistics are saved here
-└── LICENSE
+└── MDMCritic/
 ```
