@@ -386,7 +386,7 @@ def metric_func_corr(critic, phys_gt):
         
 
 def loss_func_corr(critic, phys_gt, loss_type, critic_coef = 1.0, phys_coef = 1.0):
-    # critic: torch (batch_size, 2), mpjpe_gt: torch (batch_size, 2)
+    # critic: torch (batch_size, 2), phys_gt: torch (batch_size, 2)
     
     target = torch.zeros(critic.shape[0], dtype=torch.long).to(critic.device)
     loss_critic_list = F.cross_entropy(critic, target, reduction='none')
@@ -395,7 +395,7 @@ def loss_func_corr(critic, phys_gt, loss_type, critic_coef = 1.0, phys_coef = 1.
     critic_diff = critic[:, 0] - critic[:, 1]
     acc = torch.mean((critic_diff > 0).clone().detach().float())
     phys_error = torch.tensor(0)
-    # phys_gt = -phys_gt # 使得phys评分也越大越好
+    # phys_gt = -phys_gt # 使得phys评分也越大越好 NOTE: 如果获得的mpjpe已经进行了normalize并且变成了相反数，则不再需要这一行
     
     if loss_type == "mse":
         loss_phys = F.mse_loss(critic, phys_gt)
@@ -423,13 +423,13 @@ def loss_func_corr(critic, phys_gt, loss_type, critic_coef = 1.0, phys_coef = 1.
         #     #             torch.stack([critic[i], phys_gt[i]], dim=0) # [2, 2]
         #     #         )[0, 1]
         #     # loss_plcc.append(corr)
-            
         # loss_phys = -sum(loss_plcc) / len(loss_plcc)
     
     elif loss_type == "srocc":
         critic_flat = critic.view(-1)
         phys_flat = phys_gt.view(-1)
         loss_phys = -spearmanr_loss(critic_flat.unsqueeze(0), phys_flat.unsqueeze(0))
+        
         # NOTE: perpair: better-worse两条数据计算corr
         # loss_srocc = []
         # for i in range(critic.shape[0]):

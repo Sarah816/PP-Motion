@@ -430,8 +430,6 @@ def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
     quaternion[..., 2:3] += a2 * k
     return torch.cat([w, quaternion], dim=-1)
 
-# TODO: add below funtionalities
-#  - pose_to_rtvec
 
 
 # layer api

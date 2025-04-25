@@ -233,7 +233,7 @@ def compute_phys_metrics(pred_vertices, converter=None, key=None, args=None, n=N
     info["floor_z"] = -0.005
     # pred_vertices = torch.from_numpy(res["pred_vertices"]).float()
     pred_vertices = pred_vertices.float()
-    # pred_vertices = pred_vertices[1:] # TODO: 这一行不知道有什么用，先注释掉了
+    # pred_vertices = pred_vertices[1:] # NOTE: 这一行不知道有什么用，先注释掉了
     # mean distance in mm for all verts that have a height < 0
     pent = np.mean(compute_ground_penetration(pred_vertices, info))
     skate = np.mean(compute_skate(pred_vertices, info))

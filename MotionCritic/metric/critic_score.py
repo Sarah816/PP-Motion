@@ -64,11 +64,6 @@ def metric_func(critic):
 
     # return acc.item(), log_loss_value, roc_auc_value
 
-# scores = np.load("stats/norm_lossplcc_perprompt_phys0.3/metric_score_mdm.npy") # (5823, 2)
-# scores = np.load("stats/norm_lossplcc_perprompt_phys0.3_mdmval.npy")
-# print(scores[:20])
-# exit(0)
-# metric_func(torch.from_numpy(scores))
 
 class motion_pair_dataset(Dataset):
     def __init__(self, motion_pair_list_name):
@@ -80,14 +75,10 @@ class motion_pair_dataset(Dataset):
     def __len__(self):
         return len(self.data)
     
-# TODO: refactor
-
 
 def get_val_scores(dataset_pth, output_pth, exp_name, ckp="checkpoint_latest"):
 
     device = torch.device('cuda:0')
-    # exp_name = "critic_correct_org_lr3.5e-5_singlegpu"
-    # exp_name = "norm_lossplcc_perprompt_phys0.3"
 
     model = MotionCritic(phys_bypass=False, depth=3, dim_feat=256, dim_rep=512, mlp_ratio=4)
     model = torch.nn.DataParallel(model)
@@ -126,17 +117,14 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
     val_dataset = "flame"
-    val_pth_name = f"mlist_{val_dataset}.pth"
-    val_pth = os.path.join(PROJ_DIR, 'data/'+ val_pth_name)
+    val_pth_name = f"{val_dataset}-fulleval.pth"
+    val_pth = os.path.join(PROJ_DIR, 'data/val_dataset_for_metrics/'+ val_pth_name)
+    exp_name = "norm_lossplcc_perprompt_phys0.3"
+    checkpoint = "checkpoint_latest"
+    output_pth = os.path.join(PROJ_DIR, f'data/scores/score_{val_dataset}/{val_dataset}_{checkpoint}.npy')
 
-
-    all_scores = get_val_scores(val_pth, output_pth=val_dataset, exp_name="norm_lossplcc_perprompt_phys0.3")
-    # print(f"all_scores' shape {all_scores.shape}")
-    # np.save(f"stats/{exp_name}_{val_dataset}.npy", all_scores.numpy())
-    # np.save(f"stats/pretrained_mdmval.npy", all_scores.numpy())
-    # print(f"all_scores' mean {torch.mean(all_scores)}")
-
-
+    all_scores = get_val_scores(val_pth, output_pth=output_pth, exp_name=exp_name, checkpoint=checkpoint)
+    
     metric_func(all_scores)
 
     # physics_score= np.load(f"data/mpjpe/{val_dataset}_mpjpe.npy")

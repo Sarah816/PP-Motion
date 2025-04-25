@@ -136,10 +136,7 @@ def compute_phys(dataset_pth):
     compute_skate = []
     compute_float = []
     for i in tqdm(range(len(dataset))):
-    # for i in tqdm(range(100)):
         item = dataset[i]
-        # motion_better = item['motion_better'].squeeze(dim=0)
-        # motion_worse = item['motion_worse'].squeeze(dim=0)
         motion_better = item['motion_better']
         motion_worse = item['motion_worse']
         motion = torch.stack((motion_better, motion_worse), dim=0)
@@ -149,15 +146,12 @@ def compute_phys(dataset_pth):
         compute_pen.append(np.array([metric_better["penetration"], metric_worse["penetration"]]))
         compute_skate.append(np.array([metric_better["skate"], metric_worse["skate"]]))
         compute_float.append(np.array([metric_better["float"], metric_worse["float"]]))
-        # print(compute_pen, compute_skate, compute_float)
-        # exit(0)
     compute_pen = np.stack(compute_pen, axis=0)
     compute_skate = np.stack(compute_skate, axis=0)
     compute_float = np.stack(compute_float, axis=0)
     # print("penetration:", compute_pen)
     # print("skating:", compute_skate)
     # print("floating:", compute_float)
-    # exit(0)
     return compute_pen, compute_skate, compute_float
 
 
@@ -472,42 +466,18 @@ def jointxyz_pairs_from_filename(file_name, choise):
 
 def results_from_filename(file_name, choise, metric):
     
-
     gt = choose_gt_dataset_from_filename(file_name) # gt shape: [batch_size, 60, 25, 3], axis-angle
-    # root_better, root_worse = rootloc_pairs_from_filename(file_name, choise)
-    # joint_better, joint_worse = jointxyz_pairs_from_filename(file_name, choise)
     gt_loc = gt.permute(0,3,1,2)[:,:,24:25,0:3]
-    # gt_xyz = choose_gtxyz_dataset_from_filename(file_name)
-    # joint_better, joint_worse = joint_better.to(device), joint_worse.to(device)
-    # gt_xyz = gt_xyz.to(device)
-    
-    # better_root_AE = compute_AE(root_better, gt_loc)
-    # worse_root_AE = compute_AE(root_worse, gt_loc)
-    # better_root_AVE = compute_AVE(root_better, gt_loc)
-    # worse_root_AVE = compute_AVE(root_worse, gt_loc)
-    
-    # better_joint_AE = compute_AE(joint_better, gt_xyz).cpu()
-    # worse_joint_AE = compute_AE(joint_worse, gt_xyz).cpu()
-    # better_joint_AVE = compute_AVE(joint_better, gt_xyz).cpu()
-    # worse_joint_AVE = compute_AVE(joint_worse, gt_xyz).cpu()
-    
-    # better_PFC = compute_PFC(joint_better).cpu() # shape [3]
-    # worse_PFC = compute_PFC(joint_worse).cpu()
-    
-    
 
     if metric == 'Root AE':
         better, worse = rootloc_pairs_from_filename(file_name, choise)
-        # gt_loc = gt[:,:,24:25,:] # changed
         gt_loc = gt.permute(0,3,1,2)[:,:,24:25,0:3]
         better_AE = compute_AE(better, gt_loc)
         worse_AE = compute_AE(worse, gt_loc)
         return better_AE, worse_AE
  
-
     elif metric == 'Root AVE':
         better, worse = rootloc_pairs_from_filename(file_name, choise)
-        # gt_loc = gt[:,:,24:25,:]
         gt_loc = gt.permute(0,3,1,2)[:,:,24:25,0:3]
         better_AVE = compute_AVE(better, gt_loc)
         worse_AVE = compute_AVE(worse, gt_loc)
@@ -701,13 +671,20 @@ if __name__ == '__main__':
         with open("data/mapping/mdm-fulleval_category.json") as f:
             mdm_category_to_idx = json.load(f)
         humanact12_keys = ["mdma-00", "mdma-01", "mdma-02", "mdma-03", "mdma-04", "mdma-05", "mdma-06", "mdma-07", "mdma-08", "mdma-09", "mdma-10", "mdma-11"]
-    # df_spearman = pd.DataFrame(columns=humanact12_keys)
-    # df_kendall = pd.DataFrame(columns=humanact12_keys)
-    # df_pearson = pd.DataFrame(columns=humanact12_keys)
-    df_spearman = pd.read_csv('stats/metric_spearman_perprompt.csv', index_col=0)
-    df_kendall = pd.read_csv('stats/metric_kendall_perprompt.csv', index_col=0)
-    df_pearson = pd.read_csv('stats/metric_pearson_perprompt.csv', index_col=0)
     
+    if os.path.exists('stats/metric_spearman_perprompt.csv'):
+        df_spearman = pd.read_csv('stats/metric_spearman_perprompt.csv', index_col=0)
+    else:
+        df_spearman = pd.DataFrame()
+    if os.path.exists('stats/metric_kendall_perprompt.csv'):
+        df_kendall = pd.read_csv('stats/metric_kendall_perprompt.csv', index_col=0)
+    else:
+        df_kendall = pd.DataFrame()
+    if os.path.exists('stats/metric_pearson_perprompt.csv'):
+        df_pearson = pd.read_csv('stats/metric_pearson_perprompt.csv', index_col=0)
+    else:
+        df_pearson = pd.DataFrame()
+        
     metrics = ['Model', 'MotionCritic', 'Joint AVE', 'Joint AE', 'Root AVE', 'Root AE', 'PFC', 'phys']
     
     for metric in metrics:

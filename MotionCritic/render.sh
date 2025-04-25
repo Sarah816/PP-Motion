@@ -5,7 +5,6 @@ export CUDA_VISIBLE_DEVICES=0
 #     --exclude_gt --render_folder
 
 
-# --data_path data/val_dataset_for_metrics/mdm-fulleval-fixheight.pth \
 python -m render.render_batch\
     --data_path data/mlist_mdmval.pth \
     --output_path render_output/mdmval\

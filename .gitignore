@@ -19,6 +19,8 @@ MotionCritic/metric/metrics_data/
 MotionCritic/metric/body_models/
 MotionCritic/pics/
 MotionCritic/stats/
+MotionCritic/render_output
+MotionCritic/body_models
 
 MDMCritic/body_models/
 MDMCritic/dataset/
