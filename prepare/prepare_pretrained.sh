@@ -1,9 +1,4 @@
 cd MotionCritic
-mkdir -p pretrained
-cd pretrained
 # download pretrained model
-gdown https://drive.google.com/uc?id=1vifu1vktjCWDpyPpzGPugzHNalhsaMpq
-
-
-
-
+gdown --folder https://drive.google.com/drive/folders/11s-eXweZZ23g9ZonJQVRul-r0fHZXRAu
+echo -e "Downloaded pretrained models to MotionCritic/pretrained folder\n"
