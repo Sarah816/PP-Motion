@@ -121,9 +121,9 @@ if __name__ == "__main__":
     val_pth = os.path.join(PROJ_DIR, 'data/val_dataset_for_metrics/'+ val_pth_name)
     exp_name = "norm_lossplcc_perprompt_phys0.3"
     checkpoint = "checkpoint_latest"
-    output_pth = os.path.join(PROJ_DIR, f'data/scores/score_{val_dataset}/{val_dataset}_{checkpoint}.npy')
-
-    all_scores = get_val_scores(val_pth, output_pth=output_pth, exp_name=exp_name, checkpoint=checkpoint)
+    output_pth = os.path.join(PROJ_DIR, f'data/scores/{exp_name}/score_{val_dataset}_{checkpoint}.npy')
+    os.makedirs(os.path.dirname(output_pth), exist_ok=True)
+    all_scores = get_val_scores(val_pth, output_pth=output_pth, exp_name=exp_name, ckp=checkpoint)
     
     metric_func(all_scores)
 

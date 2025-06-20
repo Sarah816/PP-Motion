@@ -3,9 +3,9 @@
 # MSE loss: norm_lossmse_exp2_phys0.3
 
 # NOTE: Put model {checkpoint}.pth in directory output/{exp_name}/
-export CUDA_VISIBLE_DEVICES=7
+export CUDA_VISIBLE_DEVICES=5
 python metric/metrics.py \
     --mode mdmval \
     --exp_name norm_lossplcc_perprompt_phys0.3 \
     --checkpoint checkpoint_latest\
-    --calc_perprompt
+    # --calc_perprompt

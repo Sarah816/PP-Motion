@@ -68,6 +68,7 @@ def wrap_text(comment):
     return lines
 
 def render_single(motion, device, comment, file_path, pose_format="rot6d", no_comment=False, isYellow=True):
+    # motion: torch.Size([1, 25, 3, seqlen])
     # if os.path.exists(file_path):
     #     print(f"File {file_path} already exists. Skipping rendering.")
     #     return

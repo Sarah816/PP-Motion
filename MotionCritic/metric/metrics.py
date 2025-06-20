@@ -637,13 +637,14 @@ if __name__ == '__main__':
     
     exp_name = args.exp_name
     checkpoint = args.checkpoint
+    calc_perprompt = args.calc_perprompt
     
     if val_dataset == 'mdmval':
         file_path = os.path.join(PROJ_DIR, f'metric/metrics_data/marked/mdm-fulleval.json')
-        physics_score = np.load(os.path.join(PROJ_DIR, f'data/mpjpe/mdmval_mpjpe_norm.npy')) # (5823, 3)
+        physics_score = np.load(os.path.join(PROJ_DIR, f'data/mpjpe/mdmval_mpjpe_norm.npy')) # (5823, 2)
     else:
         file_path = os.path.join(PROJ_DIR, f'metric/metrics_data/marked/flame-fulleval.json')
-        physics_score = np.load(os.path.join(PROJ_DIR, f'data/mpjpe/flame_fulleval_mpjpe.npy'))
+        physics_score = np.load(os.path.join(PROJ_DIR, f'data/mpjpe/flame_fulleval_mpjpe_norm.npy'))
     print(f"Evaluating, dataset is {val_dataset}, annotation file path is {file_path}")
     
     val_data_pth = os.path.join(PROJ_DIR, f'data/val_dataset_for_metrics/{val_dataset}-fulleval.pth')
@@ -657,6 +658,7 @@ if __name__ == '__main__':
     if not os.path.exists(model_score_pth):
         print(f"***Calculating ours model score***")
         model_score = get_val_scores(val_data_pth, output_pth=model_score_pth, exp_name=exp_name, ckp=checkpoint)
+        np.save(model_score_pth, model_score.numpy())
     else:
         model_score = torch.from_numpy(np.load(model_score_pth))
     
@@ -667,26 +669,27 @@ if __name__ == '__main__':
         mocritic_score = torch.from_numpy(np.load(mocritic_score_pth))
     
     
-    if args.calc_perprompt:
+    if calc_perprompt:
         with open("data/mapping/mdm-fulleval_category.json") as f:
             mdm_category_to_idx = json.load(f)
         humanact12_keys = ["mdma-00", "mdma-01", "mdma-02", "mdma-03", "mdma-04", "mdma-05", "mdma-06", "mdma-07", "mdma-08", "mdma-09", "mdma-10", "mdma-11"]
     
-    if os.path.exists('stats/metric_spearman_perprompt.csv'):
-        df_spearman = pd.read_csv('stats/metric_spearman_perprompt.csv', index_col=0)
-    else:
-        df_spearman = pd.DataFrame()
-    if os.path.exists('stats/metric_kendall_perprompt.csv'):
-        df_kendall = pd.read_csv('stats/metric_kendall_perprompt.csv', index_col=0)
-    else:
-        df_kendall = pd.DataFrame()
-    if os.path.exists('stats/metric_pearson_perprompt.csv'):
-        df_pearson = pd.read_csv('stats/metric_pearson_perprompt.csv', index_col=0)
-    else:
-        df_pearson = pd.DataFrame()
+        if os.path.exists('stats/metric_spearman_perprompt.csv'):
+            df_spearman = pd.read_csv('stats/metric_spearman_perprompt.csv', index_col=0)
+        else:
+            df_spearman = pd.DataFrame()
+        if os.path.exists('stats/metric_kendall_perprompt.csv'):
+            df_kendall = pd.read_csv('stats/metric_kendall_perprompt.csv', index_col=0)
+        else:
+            df_kendall = pd.DataFrame()
+        if os.path.exists('stats/metric_pearson_perprompt.csv'):
+            df_pearson = pd.read_csv('stats/metric_pearson_perprompt.csv', index_col=0)
+        else:
+            df_pearson = pd.DataFrame()
         
-    metrics = ['Model', 'MotionCritic', 'Joint AVE', 'Joint AE', 'Root AVE', 'Root AE', 'PFC', 'phys']
-    
+    # metrics = ['Model', 'MotionCritic', 'Joint AVE', 'Joint AE', 'Root AVE', 'Root AE', 'PFC', 'phys']
+    # metrics = ['Joint AE', 'Root AVE', 'Root AE', 'PFC', 'phys']
+    metrics = ['Model']
     for metric in metrics:
         print('### Calculating Metric:', metric)
         if metric == 'Model':
@@ -710,9 +713,9 @@ if __name__ == '__main__':
             print(f"evaluating total")
             acc, log_loss_value = calc_critic_metric(metric_score, metric=metric_key)
             if val_dataset == "flame":
-                spearman_corr, kendall_tau, pearson_corr = metric_correlation(physics_score, metric_score.numpy(), calc_type="total")
+                spearman_corr, kendall_tau, pearson_corr = metric_correlation(physics_score, metric_score.numpy(), calc_type="total", dataset=val_dataset)
             else:
-                spearman_corr, kendall_tau, pearson_corr = metric_correlation(physics_score, metric_score.numpy(), calc_type="prompt")
+                spearman_corr, kendall_tau, pearson_corr = metric_correlation(physics_score, metric_score.numpy(), calc_type="prompt", dataset=val_dataset)
             if metric_key != "Model" and metric_key != "MotionCritic":
                 spearman_corr, kendall_tau, pearson_corr = -spearman_corr, -kendall_tau, -pearson_corr
             print({
@@ -722,11 +725,13 @@ if __name__ == '__main__':
                 "spearman_corr": spearman_corr,
                 "kendall_corr": kendall_tau,
             })
-            df_spearman.loc[metric_key, 'total'] = spearman_corr
-            df_kendall.loc[metric_key, 'total'] = kendall_tau
-            df_pearson.loc[metric_key, 'total'] = pearson_corr
             
-            if args.calc_perprompt:
+            if calc_perprompt:
+                # save total evaluation to dataframes
+                df_spearman.loc[metric_key, 'total'] = spearman_corr
+                df_kendall.loc[metric_key, 'total'] = kendall_tau
+                df_pearson.loc[metric_key, 'total'] = pearson_corr
+                
                 # 2. Calculate humanact12 dataset perprompt
                 for label in humanact12_keys:
                     idxs = mdm_category_to_idx[label]
@@ -742,13 +747,14 @@ if __name__ == '__main__':
             
                 # 3. Calculate uestc dataset
                 print(f"evaluating uestc")
-                spearman_corr, kendall_tau, pearson_corr = metric_correlation(physics_score, metric_score.numpy(), calc_type="prompt", subset="uestc")
+                spearman_corr, kendall_tau, pearson_corr = metric_correlation(physics_score, metric_score.numpy(), calc_type="prompt", subset="uestc", dataset=val_dataset)
                 if metric_key != "Model" and metric_key != "MotionCritic":
                     spearman_corr, kendall_tau, pearson_corr = -spearman_corr, -kendall_tau, -pearson_corr
                 df_spearman.loc[metric_key, 'mdmu'] = spearman_corr
                 df_kendall.loc[metric_key, 'mdmu'] = kendall_tau
                 df_pearson.loc[metric_key, 'mdmu'] = pearson_corr
     
-    df_spearman.to_csv('stats/metric_spearman_perprompt.csv', float_format='%.3f', index=True)
-    df_kendall.to_csv('stats/metric_kendall_perprompt.csv', float_format='%.3f', index=True)
-    df_pearson.to_csv('stats/metric_pearson_perprompt.csv', float_format='%.3f', index=True)
+    if args.calc_perprompt:
+        df_spearman.to_csv('stats/metric_spearman_perprompt.csv', float_format='%.3f', index=True)
+        df_kendall.to_csv('stats/metric_kendall_perprompt.csv', float_format='%.3f', index=True)
+        df_pearson.to_csv('stats/metric_pearson_perprompt.csv', float_format='%.3f', index=True)

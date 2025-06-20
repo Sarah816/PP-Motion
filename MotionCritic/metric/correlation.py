@@ -56,7 +56,7 @@ def metric_func(critic):
 # print(np.mean(phys))
 # exit(0)
 
-def metric_correlation(critic_score, physics_score, calc_type, subset=None):
+def metric_correlation(critic_score, physics_score, calc_type, subset=None, dataset=""):
     critic_worse = critic_score[:, 1]
     critic_better = critic_score[:, 0]
     physics_worse = physics_score[:, 1]
@@ -115,8 +115,11 @@ def metric_correlation(critic_score, physics_score, calc_type, subset=None):
     
     elif calc_type == "prompt":
         # print("---Calculate unit: prompt---")
-        with open("data/mapping/mdm-fulleval_category.json") as f: # TODO: refactor
-            category_to_idx = json.load(f)
+        if dataset == "mdmval":
+            f = open("data/mapping/mdm-fulleval_category.json")
+        elif dataset == "mdmtrain":
+            f = open("data/mapping/mdmtrain_category.json")
+        category_to_idx = json.load(f)
         for cate, idxs in category_to_idx.items():
             if subset == "uestc":
                 if cate.startswith("mdma"):

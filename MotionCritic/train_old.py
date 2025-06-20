@@ -2,7 +2,7 @@ import sys
 import os
 PROJ_DIR = os.path.dirname(os.path.abspath(__file__)) # 'MotionCritic/MotionCritic'
 sys.path.append(PROJ_DIR)
-os.environ['WANDB__EXECUTABLE'] =  '/home/zhaosh/miniconda3/envs/mocritic/bin/python'
+os.environ['WANDB__EXECUTABLE'] =  '/home/songc/anaconda3/envs/mocritic/bin/python'
 os.environ['WANDB_DIR'] = PROJ_DIR + '/wandb/'
 os.environ['WANDB_CACHE_DIR'] = PROJ_DIR + '/wandb/.cache/'
 os.environ['WANDB_CONFIG_DIR'] = PROJ_DIR + '/wandb/.config/'
@@ -29,29 +29,7 @@ from tqdm import tqdm
 # this might be useful
 torch.manual_seed(3407)
 
-checkpoint_interval = 25
-
-# with open('data/mapping/motion_better_duplicate.json') as f:
-#     duplicate = json.load(f)
-# mpjpe = np.load('data/mpjpe/mdmtrain_mpjpe_corrected_org.npy')
-# mpjpe_norm = np.load('data/mpjpe/mdmtrain_mpjpe_corrected_norm.npy')
-# mpjpe_reverse = np.load('data/mpjpe/mdmtrain_mpjpe_corrected_reverse.npy') # (46740, 2)
-# for index_list in duplicate:
-#     idx0 = index_list[0]
-#     if len(index_list) >= 2:
-#         idx1 = index_list[1]
-#         mpjpe[idx1, 0] = mpjpe[idx0, 0]
-#         mpjpe_norm[idx1, 0] = mpjpe_norm[idx0, 0]
-#         mpjpe_reverse[idx1, 0] = mpjpe_reverse[idx0, 0]
-#     if len(index_list) >= 3:
-#         idx2 = index_list[2]
-#         mpjpe[idx2, 0] = mpjpe[idx0, 0]
-#         mpjpe_norm[idx2, 0] = mpjpe_norm[idx0, 0]
-#         mpjpe_reverse[idx2, 0] = mpjpe_reverse[idx0, 0]
-# np.save('data/mpjpe/mdmtrain_mpjpe_corrected.npy', mpjpe)
-# np.save('data/mpjpe/mdmtrain_mpjpe_corrected_reverse.npy', mpjpe_reverse)
-# np.save('data/mpjpe/mdmtrain_mpjpe_corrected_norm.npy', mpjpe_norm)
-
+checkpoint_interval = 30
 
 def parse_args():
 
@@ -121,15 +99,15 @@ def parse_args():
 
 
 def create_data_loaders(dataset, batch_size):
-    train_dataset = MotionCategoryDataset("mdmtrain", dataset_type=dataset)
-    train_sampler = CategoryBatchSampler(train_dataset, batch_size=batch_size, drop_last=True)
-    train_loader = DataLoader(train_dataset, batch_sampler=train_sampler)
+    # train_dataset = MotionCategoryDataset("mdmtrain", dataset_type=dataset)
+    # train_sampler = CategoryBatchSampler(train_dataset, batch_size=batch_size, drop_last=True)
+    # train_loader = DataLoader(train_dataset, batch_sampler=train_sampler)
     val_dataset = MotionCategoryDataset("mdmval", dataset_type=dataset)
     val_sampler = CategoryBatchSampler(val_dataset, batch_size=500, drop_last=False) # batch_size设置的比较大，使得每次evaluate时，同一个prompt的所有motion都在一个batch中，每条数据都能被取到
     val_loader = DataLoader(val_dataset, batch_sampler=val_sampler)
     
-    # train_motion_pairs = motion_pair_dataset(dataset_name="mdmtrain", dataset_type=dataset)
-    # train_loader = DataLoader(train_motion_pairs, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2)
+    train_motion_pairs = motion_pair_dataset(dataset_name="mdmtrain", dataset_type=dataset)
+    train_loader = DataLoader(train_motion_pairs, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2)
     # val_motion_pairs = motion_pair_dataset(dataset_name="mdmval", dataset_type=dataset)
     # val_loader = DataLoader(val_motion_pairs, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2)
     # val_motion_pairs = MotionCategoryDataset(dataset_name="mdmval", dataset_type=dataset)
@@ -386,7 +364,7 @@ def metric_func_corr(critic, phys_gt):
         
 
 def loss_func_corr(critic, phys_gt, loss_type, critic_coef = 1.0, phys_coef = 1.0):
-    # critic: torch (batch_size, 2), phys_gt: torch (batch_size, 2)
+    # critic: torch (batch_size, 2), mpjpe_gt: torch (batch_size, 2)
     
     target = torch.zeros(critic.shape[0], dtype=torch.long).to(critic.device)
     loss_critic_list = F.cross_entropy(critic, target, reduction='none')
@@ -395,7 +373,7 @@ def loss_func_corr(critic, phys_gt, loss_type, critic_coef = 1.0, phys_coef = 1.
     critic_diff = critic[:, 0] - critic[:, 1]
     acc = torch.mean((critic_diff > 0).clone().detach().float())
     phys_error = torch.tensor(0)
-    # phys_gt = -phys_gt # 使得phys评分也越大越好 NOTE: 如果获得的mpjpe已经进行了normalize并且变成了相反数，则不再需要这一行
+    # phys_gt = -phys_gt # 使得phys评分也越大越好
     
     if loss_type == "mse":
         loss_phys = F.mse_loss(critic, phys_gt)
@@ -423,13 +401,13 @@ def loss_func_corr(critic, phys_gt, loss_type, critic_coef = 1.0, phys_coef = 1.
         #     #             torch.stack([critic[i], phys_gt[i]], dim=0) # [2, 2]
         #     #         )[0, 1]
         #     # loss_plcc.append(corr)
+            
         # loss_phys = -sum(loss_plcc) / len(loss_plcc)
     
     elif loss_type == "srocc":
         critic_flat = critic.view(-1)
         phys_flat = phys_gt.view(-1)
         loss_phys = -spearmanr_loss(critic_flat.unsqueeze(0), phys_flat.unsqueeze(0))
-        
         # NOTE: perpair: better-worse两条数据计算corr
         # loss_srocc = []
         # for i in range(critic.shape[0]):
