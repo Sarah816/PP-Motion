@@ -3,21 +3,6 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-# dataset_new = torch.load("data/mlist_mdmfull_train_overlap.pth")
-# print(len(dataset_new))
-# exit(0)
-
-# mpjpe_better = np.load("data/mpjpe/mdmval_mpjpe_better_short.npy")
-# len_old = len(mpjpe_better)
-# mpjpe_better_new = np.zeros(len_old*3, dtype=np.float32)
-# for i in range(mpjpe_better.shape[0]):
-#     mpjpe_better_new[i*3] = mpjpe_better[i]
-#     mpjpe_better_new[i*3+1] = mpjpe_better[i]
-#     mpjpe_better_new[i*3+2] = mpjpe_better[i]
-# print(mpjpe_better[:5])
-# print(mpjpe_better_new[:15])
-# np.save("data/mpjpe/mdmval_mpjpe_better.npy", mpjpe_better_new)
-# exit(0)
 
 np.set_printoptions(precision=3, floatmode='fixed', suppress=True)
 
@@ -44,19 +29,19 @@ def reconstruct_dataset_overlap():
     mpjpe_worse = np.load("data/mpjpe/mdmtrain_old_mpjpe_worse.npy")
     mpjpe_better_new = np.zeros(new_len, dtype=np.float32)
     mpjpe_worse_new = np.zeros(new_len, dtype=np.float32)
-    dataset_new = torch.load("data/mlist_mdmfull_train_corrected.pth")
+    dataset_new = torch.load("data/motion_dataset/mlist_mdmfull_train_corrected.pth")
     dataset_overlap = []
     for i in tqdm(range(new_len)):
         idx_new, idx_old = match_dataset[i]
         dataset_overlap.append(dataset_new[idx_new])
         mpjpe_better_new[i] = mpjpe_better[idx_old]
         mpjpe_worse_new[i] = mpjpe_worse[idx_old]
-    # torch.save(dataset_overlap, "data/mlist_mdmfull_train_overlap.pth")
+    # torch.save(dataset_overlap, "data/motion_dataset/mlist_mdmfull_train_overlap.pth")
     np.save("data/mpjpe/mdmtrain_mpjpe_better.npy", mpjpe_better_new)
     np.save("data/mpjpe/mdmtrain_mpjpe_worse.npy", mpjpe_worse_new)
         
 def check_better():
-    data = torch.load("data/mlist_mdmfull_train_corrected.pth")
+    data = torch.load("data/motion_dataset/mlist_mdmfull_train_corrected.pth")
     for i in tqdm(range(0, len(data), 3)):
         better1 = data[i]["motion_better"]
         better2 = data[i+1]["motion_better"]
@@ -165,8 +150,8 @@ def hash_array(array, decimals=6):
     return hash(array_tuple)
 
 def check_duplication():
-    dataset1 = torch.load("data/mlist_flame.pth")
-    dataset2 = torch.load("data/val_dataset_for_metrics/flame-fulleval.pth")
+    dataset1 = torch.load("data/motion_dataset/mlist_flame.pth")
+    dataset2 = torch.load("data/motion_dataset/mlist_flame_fulleval.pth")
     data_len = len(dataset1)
     for i in tqdm(range(data_len)):
         tensor1 = dataset1[i]["motion_better"]
@@ -177,8 +162,8 @@ def check_duplication():
         
 
 def map_flame_eval():
-    # dataset1 = torch.load("data/mlist_flame.pth")
-    # dataset2 = torch.load("data/val_dataset_for_metrics/flame-fulleval.pth")
+    # dataset1 = torch.load("data/motion_dataset/mlist_flame.pth")
+    # dataset2 = torch.load("data/motion_dataset/mlist_flame_fulleval.pth")
     # data_len = len(dataset1)
     # mapping = []
     # for i in tqdm(range(data_len)):
@@ -206,7 +191,7 @@ def map_flame_eval():
         
 
 def find_duplicate_indices():
-    dataset = torch.load("data/mlist_mdmtrain_corrected.pth")
+    dataset = torch.load("data/motion_dataset/mlist_mdmtrain_corrected.pth")
     array_to_indices = {}
     # print(torch.all(dataset[0]["motion_better"] == dataset[1]["motion_better"]))
     # tensor1 = dataset[0]["motion_better"]

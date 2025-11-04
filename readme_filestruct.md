@@ -13,12 +13,12 @@ PP-Motion/
 │           ├── mdmtrain_mpjpe_corrected_norm.npy
 │           ├── mdmval_mpjpe_norm.npy
 │           └── flame_fulleval_mpjpe.npy
-│       ├── val_dataset_for_metrics/
-│           ├── flame-fulleval.pth
-│           └── mdmval-fulleval.pth
+│       ├── motion_dataset/
+│           ├── mlist_flame_fulleval.pth
+│           └── mlist_mdmval_fulleval.pth
 │       ├── gt-packed/                       # Only used for metric calculation
-│       ├── mlist_mdmtrain_corrected.pth     # Train dataset
-│       └── mlist_mdmval.pth                 # Validation dataset, same as mdmval-fulleval.pth
+│       ├── motion_dataset/mlist_mdmtrain_corrected.pth     # Train dataset
+│       └── motion_dataset/mlist_mdmval.pth                 # Validation dataset, same as mlist_mdmval_fulleval.pth
 │   ├── output/             # Checkpoints are saved here
 │   ├── pretrained/         # Pretrained models
 │       ├── motioncritic_pre.pth             # MotionCritic model

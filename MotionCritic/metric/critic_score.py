@@ -117,8 +117,8 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
     val_dataset = "flame"
-    val_pth_name = f"{val_dataset}-fulleval.pth"
-    val_pth = os.path.join(PROJ_DIR, 'data/val_dataset_for_metrics/'+ val_pth_name)
+    val_pth_name = f"mlist_{val_dataset}_fulleval.pth"
+    val_pth = os.path.join(PROJ_DIR, 'data/motion_dataset/'+ val_pth_name)
     exp_name = "norm_lossplcc_perprompt_phys0.3"
     checkpoint = "checkpoint_latest"
     output_pth = os.path.join(PROJ_DIR, f'data/scores/{exp_name}/score_{val_dataset}_{checkpoint}.npy')

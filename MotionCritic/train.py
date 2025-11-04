@@ -139,9 +139,9 @@ def create_data_loaders(dataset, batch_size):
 class MotionCategoryDataset(Dataset):
     def __init__(self, dataset_name, dataset_type):
         if dataset_name == "mdmtrain":
-            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/mlist_{dataset_name}_{dataset_type}.pth')
+            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}_{dataset_type}.pth')
         elif dataset_name == "mdmval":
-            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/mlist_{dataset_name}.pth')
+            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}.pth')
         else:
             raise ValueError("Unsupported dataset name.")
             
@@ -221,9 +221,9 @@ class CategoryBatchSampler(Sampler):
 # class MotionCategoryDataset(Dataset):
 #     def __init__(self, dataset_name, dataset_type):
 #         if dataset_name == "mdmtrain":
-#             motion_dataset_pth = os.path.join(PROJ_DIR, f'data/mlist_{dataset_name}_{dataset_type}.pth')
+#             motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}_{dataset_type}.pth')
 #         elif dataset_name == "mdmval":
-#             motion_dataset_pth = os.path.join(PROJ_DIR, f'data/mlist_{dataset_name}.pth')
+#             motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}.pth')
 #         else:
 #             raise ValueError("Unsupported dataset name.")
             
@@ -270,9 +270,9 @@ class CategoryBatchSampler(Sampler):
 class motion_pair_dataset(Dataset):
     def __init__(self, dataset_name, dataset_type):
         if dataset_name == "mdmtrain":
-            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/mlist_{dataset_name}_{dataset_type}.pth')
+            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}_{dataset_type}.pth')
         elif dataset_name == "mdmval":
-            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/mlist_{dataset_name}.pth')
+            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}.pth')
         print(f"Loading dataset from {motion_dataset_pth}")
         self.data = torch.load(motion_dataset_pth)
         if enable_phys:

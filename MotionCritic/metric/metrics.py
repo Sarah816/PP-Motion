@@ -7,37 +7,19 @@ import torch
 import numpy as np
 import json
 import torch.nn.functional as F
-from sklearn.metrics import roc_auc_score, log_loss
-
-
-from sklearn.metrics import average_precision_score, brier_score_loss, accuracy_score
+from sklearn.metrics import log_loss
 from lib.utils.rotation2xyz import Rotation2xyz
-
-from scipy.stats import wilcoxon
 import argparse
+import pandas as pd
+from tqdm import tqdm
 
 from correlation import metric_correlation
-from lib.model.critic import MotionCritic
-from tqdm import tqdm
 from parsedata import into_critic
 from critic_score import get_val_scores
-
 from uhc.smpllib.smpl_eval import compute_phys_metrics
-import pandas as pd
-
-'''
-# 读取 CSV 文件
-df_k = pd.read_csv('stats/metric_kendall_perprompt.csv')
-df_p = pd.read_csv('stats/metric_pearson_perprompt.csv')
-df_s = pd.read_csv('stats/metric_spearman_perprompt.csv')
-# 保存为 Excel 文件
-df_s.to_excel('stats/metric_spearman_perprompt.xlsx', index=True, sheet_name='spearman_corr', float_format="%.4f") 
-df_p.to_excel('stats/metric_pearson_perprompt.xlsx', index=True, sheet_name='pearson_corr', float_format="%.4f") 
-df_k.to_excel('stats/metric_kendall_perprompt.xlsx', index=True, sheet_name='kendall_corr', float_format="%.4f") 
-exit(0)
-'''
 
 
+np.set_printoptions(precision=2, suppress=True)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Motion Critic Evaluation')
@@ -55,29 +37,62 @@ def parse_args():
                        default='0',)
     parser.add_argument('--calc_perprompt', action='store_true',
                         help='calculate metrics per prompt')
+    parser.add_argument('--calc_baseline_metric', action='store_true',
+                        help='whether to calculate baseline metric: MotionCritic')
+    parser.add_argument('--calc_phys_metric', action='store_true',
+                        help='whether to calculate physical metrics: penetration, skating, floating, PHC')
+    parser.add_argument('--calc_gt_metric', action='store_true',
+                        help='whether to calculate GT-based metrics: Joint AE/AVE, Root AE/AVE')
     return parser.parse_args()
 
+# gt_humanact12 = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-humanact12/motion-gt{i}.pth'))['motion'] for i in range(12)]
+# gt_uestc = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-uestc/motion-gtuestc{i}.pth'))['motion'] for i in range(40)]
+# gt_flame = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-flame/motion-gtflame.pth'))]
 
-args = parse_args()
+# gt_humanact12xyz = torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/humanact12-gt-jointxyz.pt'))
+# gt_uestcxyz = torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/uestc-gt-jointxyz.pt'))
+# gt_flamexyz = torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/flame-gt-jointxyz.pt'))
 
-print("Loading GT datasets......")
 
-gt_humanact12 = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-humanact12/motion-gt{i}.pth'))['motion'] for i in range(12)]
-gt_uestc = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-uestc/motion-gtuestc{i}.pth'))['motion'] for i in range(40)]
-gt_flame = [torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/gt-flame/motion-gtflame.pth'))]
+gt_humanact12 = None
+gt_uestc = None
+gt_flame = None
 
-gt_humanact12xyz = torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/humanact12-gt-jointxyz.pt'))
-gt_uestcxyz = torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/uestc-gt-jointxyz.pt'))
-gt_flamexyz = torch.load(os.path.join(PROJ_DIR, f'data/gt-packed/flame-gt-jointxyz.pt'))
+gt_humanact12xyz = None
+gt_uestcxyz = None
+gt_flamexyz = None
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = args.device_id
-device = torch.device(f'cuda:0')
 
-val_dataset = args.mode
+def load_gt_datasets(mode):
+    global gt_humanact12, gt_uestc, gt_flame
+    global gt_humanact12xyz, gt_uestcxyz, gt_flamexyz
 
-# read all motions from files
-motion_location = os.path.join(PROJ_DIR, "datasets")
-print(f"generated motion location is {motion_location}")
+    if mode == 'mdmval':
+        # rotation/pose gt
+        if gt_humanact12 is None:
+            gt_humanact12 = [
+                torch.load(os.path.join(PROJ_DIR, 'data/gt-packed/gt-humanact12', f'motion-gt{i}.pth'))['motion']
+                for i in range(12)
+            ]
+        if gt_uestc is None:
+            gt_uestc = [
+                torch.load(os.path.join(PROJ_DIR, 'data/gt-packed/gt-uestc', f'motion-gtuestc{i}.pth'))['motion']
+                for i in range(40)
+            ]
+        # xyz gt
+        if gt_humanact12xyz is None:
+            gt_humanact12xyz = torch.load(os.path.join(PROJ_DIR, 'data/gt-packed/humanact12-gt-jointxyz.pt'))
+        if gt_uestcxyz is None:
+            gt_uestcxyz = torch.load(os.path.join(PROJ_DIR, 'data/gt-packed/uestc-gt-jointxyz.pt'))
+
+    elif mode == 'flame':
+        if gt_flame is None:
+            gt_flame = [
+                torch.load(os.path.join(PROJ_DIR, 'data/gt-packed/gt-flame', 'motion-gtflame.pth'))
+            ]
+        if gt_flamexyz is None:
+            gt_flamexyz = torch.load(os.path.join(PROJ_DIR, 'data/gt-packed/flame-gt-jointxyz.pt'))
+
 
 
 def visualize_vertices(vertices, title):
@@ -183,18 +198,6 @@ def extract_number_from_filename(file_name):
     except ValueError:
         return None
 
-def choose_gt_dataset_from_filename(file_name):
-    if args.mode == 'mdmval':
-        action_class = extract_number_from_filename(file_name)
-
-        if file_name[3] == 'a':
-            return gt_humanact12[action_class]
-        elif file_name[3] == 'u':
-            return gt_uestc[action_class]
-        
-    if args.mode == 'flame':
-        return gt_flame[0]
-    
 
 def choose_gtxyz_dataset_from_filename(file_name):
     if args.mode == 'mdmval':
@@ -540,27 +543,6 @@ def calc_critic_metric(critic, metric):
     # print(f"acc is {acc}, log_loss is {log_loss_value}")
     return acc.item(), log_loss_value
     
-    # some of the metrics
-    # differences = probs[:,0] - probs[:,1]
-    # var = np.var(differences)
-    # diffmean = np.mean(differences)
-    # bs = brier_score_loss(y_true=target_np, y_prob=probs[:,0])
-    # wilcoxon_statistic, p_value = wilcoxon(differences)
-    # print(f"probs diff mean {diffmean}, var {var}, bs {bs}")
-    # print(f" wilconxon {wilcoxon_statistic}, pval {p_value}")
-    
-    # compute roc-auc
-    # score00 = probs[0][0]
-    # score01 = probs[0][1]
-    # probs[0][0] = score01
-    # probs[0][1] = score00
-    # if target_np[0] == 0:
-    #     target_np[0] = 1
-    # else:
-    #     target_np[0] = 0
-    # roc_auc_value = roc_auc_score(y_true=target_np, y_score=probs[:,0])
-
-    # return acc, log_loss_value, roc_auc_value
 
 def critic_data_from_json(file_path, output_path):
     with open(file_path, 'r') as file:
@@ -602,20 +584,14 @@ def results_from_json(file_path, metric):
     
     better_score = []
     worse_score = []
-    cnt = 0
     
     for file_name, choise in tqdm(data.items()):
-        # if cnt > 14:
-        #     continue
         if choise not in ['A', 'B', 'C', 'D']:
             continue
         
         better_pairscore, worse_pairscore = results_from_filename(file_name, choise, metric) # [3] [3]
-        # print(better_pairscore, worse_pairscore)
-        # exit(0)
         better_score.append(better_pairscore)
         worse_score.append(worse_pairscore)
-        cnt += 1
         
     print(f"scores' lengths are {len(better_score)}")
     better_score = torch.cat(better_score, dim=0)
@@ -625,20 +601,23 @@ def results_from_json(file_path, metric):
     
     return both_score
 
-np.set_printoptions(precision=2, suppress=True)
 
 # Update the final execution block
 if __name__ == '__main__':
     
-    if not (os.path.exists("data/gt-packed/flame-gt-jointxyz.pt") and os.path.exists("data/gt-packed/uestc-gt-jointxyz.pt") and os.path.exists("data/gt-packed/humanact12-gt-jointxyz.pt")):
-        print(f"building gt-xyz data")
-        build_gt_xyz()
-        print(f"gt-xyz data built.")
+    args = parse_args()
     
+    device = torch.device(f'cuda:{args.device_id}') if torch.cuda.is_available() else torch.device('cpu')
+    
+    val_dataset = args.mode
     exp_name = args.exp_name
     checkpoint = args.checkpoint
     calc_perprompt = args.calc_perprompt
     
+    motion_location = os.path.join(PROJ_DIR, "datasets")
+    print(f"Generated motion location is {motion_location}")
+    
+    # Load human annotation file and physics annotation file
     if val_dataset == 'mdmval':
         file_path = os.path.join(PROJ_DIR, f'metric/metrics_data/marked/mdm-fulleval.json')
         physics_score = np.load(os.path.join(PROJ_DIR, f'data/mpjpe/mdmval_mpjpe_norm.npy')) # (5823, 2)
@@ -647,28 +626,52 @@ if __name__ == '__main__':
         physics_score = np.load(os.path.join(PROJ_DIR, f'data/mpjpe/flame_fulleval_mpjpe_norm.npy'))
     print(f"Evaluating, dataset is {val_dataset}, annotation file path is {file_path}")
     
-    val_data_pth = os.path.join(PROJ_DIR, f'data/val_dataset_for_metrics/{val_dataset}-fulleval.pth')
-    model_score_pth = os.path.join(PROJ_DIR, f'data/scores/{exp_name}/score_{val_dataset}_{checkpoint}.npy')
-    mocritic_score_pth = os.path.join(PROJ_DIR, f'data/scores/mocritic_pretrained/score_{val_dataset}_mocritic_pre.npy')
-    
+    # Load or process validation motion data
+    val_data_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{val_dataset}_fulleval.pth')
     if not os.path.exists(val_data_pth):
         print(f"***Processing val dataset***")
         critic_data_from_json(file_path, val_data_pth)
     
+    # Load or compute PP-Motion model score
+    model_score_pth = os.path.join(PROJ_DIR, f'data/scores/{exp_name}/score_{val_dataset}_{checkpoint}.npy')
     if not os.path.exists(model_score_pth):
-        print(f"***Calculating ours model score***")
+        print(f"***Calculating PP-Motion model score***")
         model_score = get_val_scores(val_data_pth, output_pth=model_score_pth, exp_name=exp_name, ckp=checkpoint)
         np.save(model_score_pth, model_score.numpy())
     else:
         model_score = torch.from_numpy(np.load(model_score_pth))
     
-    if not os.path.exists(mocritic_score_pth):
-        print(f"***Calculating MotionCritic score***")
-        mocritic_score = get_val_scores(val_data_pth, output_pth=mocritic_score_pth, exp_name="mocritic_pretrained", ckp="mocritic_pre")
-    else:
-        mocritic_score = torch.from_numpy(np.load(mocritic_score_pth))
+        
+    # Default metric: PP-Motion model
+    metrics = ['Model']
+    
+    # Add other metrics
+    if args.calc_baseline_metric:
+        metrics.append('MotionCritic')
+        mocritic_score_pth = os.path.join(PROJ_DIR, f'data/scores/mocritic_pretrained/score_{val_dataset}_mocritic_pre.npy')
+        if not os.path.exists(mocritic_score_pth):
+            print(f"***Calculating MotionCritic score***")
+            mocritic_score = get_val_scores(val_data_pth, output_pth=mocritic_score_pth, exp_name="mocritic_pretrained", ckp="mocritic_pre")
+        else:
+            mocritic_score = torch.from_numpy(np.load(mocritic_score_pth))
+    
+    if args.calc_phys_metric:
+        metrics.extend(['phys'])
+    
+    if args.calc_gt_metric:
+        metrics.extend(['Joint AVE', 'Joint AE', 'Root AVE', 'Root AE', 'PFC'])
+        
+        # Set up ground-truth datasets
+        load_gt_datasets(args.mode)
+        
+        # Set up ground-truth joint xyz datasets
+        if not (os.path.exists("data/gt-packed/flame-gt-jointxyz.pt") and os.path.exists("data/gt-packed/uestc-gt-jointxyz.pt") and os.path.exists("data/gt-packed/humanact12-gt-jointxyz.pt")):
+            print(f"building gt-xyz data")
+            build_gt_xyz()
+            print(f"gt-xyz data built.")
     
     
+    # Prepare for calculating metrics within each prompt category
     if calc_perprompt:
         with open("data/mapping/mdm-fulleval_category.json") as f:
             mdm_category_to_idx = json.load(f)
@@ -686,10 +689,8 @@ if __name__ == '__main__':
             df_pearson = pd.read_csv('stats/metric_pearson_perprompt.csv', index_col=0)
         else:
             df_pearson = pd.DataFrame()
-        
-    # metrics = ['Model', 'MotionCritic', 'Joint AVE', 'Joint AE', 'Root AVE', 'Root AE', 'PFC', 'phys']
-    # metrics = ['Joint AE', 'Root AVE', 'Root AE', 'PFC', 'phys']
-    metrics = ['Model']
+            
+    # Start calculating metrics
     for metric in metrics:
         print('### Calculating Metric:', metric)
         if metric == 'Model':
@@ -733,6 +734,7 @@ if __name__ == '__main__':
                 df_pearson.loc[metric_key, 'total'] = pearson_corr
                 
                 # 2. Calculate humanact12 dataset perprompt
+                print(f"evaluating humanact12 per prompt")
                 for label in humanact12_keys:
                     idxs = mdm_category_to_idx[label]
                     physics_all = physics_score[idxs]

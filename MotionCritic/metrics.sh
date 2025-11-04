@@ -8,4 +8,7 @@ python metric/metrics.py \
     --mode mdmval \
     --exp_name norm_lossplcc_perprompt_phys0.3 \
     --checkpoint checkpoint_latest\
+    --calc_baseline_metric \
+    # --calc_phys_metric \
+    # --calc_gt_metric \
     # --calc_perprompt

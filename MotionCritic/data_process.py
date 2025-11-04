@@ -72,8 +72,7 @@ def fix_height_smpl_critic(motion):
 '''
 处理轴角表示的MotionCritic数据：fix height
 '''
-# dataset_path = "data/val_dataset_for_metrics/mdm-fulleval.pth"
-dataset_path = "data/mlist_mdmtrain_corrected.pth"
+dataset_path = "data/motion_dataset/mlist_mdmtrain_corrected.pth"
 motion_raw = torch.load(dataset_path)
 motion_fixheight = []
 for i in tqdm(range(len(motion_raw))):
