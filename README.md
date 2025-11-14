@@ -2,6 +2,10 @@
 
 This is the official PyTorch implementation of the paper "PP-Motion: Physical-Perceptual Fidelity Evaluation for Human Motion Generation" (ACM MM 2025).
 
+<a href="https://pytorch.org/get-started/locally/"><img alt="PyTorch" src="https://img.shields.io/badge/PyTorch-ee4c2c?logo=pytorch&logoColor=white"></a> [![arXiv](https://img.shields.io/badge/arXiv-2508.08179-b31b1b.svg)](https://arxiv.org/abs/2508.08179) <a href="https://sarah816.github.io/pp-motion-site/"><img alt="Project" src="https://img.shields.io/badge/-Project%20Page-lightgrey?logo=Google%20Chrome&color=informational&logoColor=white"></a>
+
+![framework](./assets/pipeline.jpg)
+
 ## Preparation
 
 ### Environment

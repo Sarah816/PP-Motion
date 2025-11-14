@@ -4,7 +4,6 @@
 *.zip
 *.mp4
 wandb/
-assets/
 
 !MDMCritic/criexample.pth
 MotionCritic/wandb
