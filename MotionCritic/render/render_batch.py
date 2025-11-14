@@ -15,7 +15,8 @@ parser.add_argument('--output_path', type=str, default=None)
 parser.add_argument('--gpu_index', type=int, default=None,
                     help='Index of the GPU to use (default: 0)')
 
-parser.add_argument('--render_index', type=int, nargs='+', default=[0])
+parser.add_argument('--render_index', type=int, nargs='+', default=[0],
+                    help='Index of data you want to render')
 
 parser.add_argument('--exclude_gt', action='store_true',
                     help='Initiate a bigger model')
