@@ -40,7 +40,7 @@ def metric_func(critic):
 
 
 # critic_score = np.load("stats/norm_lossplcc_perprompt_phys0.3_mdmval.npy") # (5823, 2) 用MotionCritic所给的原始模型进行评测
-# physics_score= np.load("data/mpjpe/mdmval_mpjpe.npy")
+# physics_score= np.load("data/phys_annotation/mdmval_mpjpe.npy")
 # critic_worse = critic_score[:, 1]
 # critic_better = critic_score[:, 0]
 # with open("data/mapping/mdmval_category.json") as f:
@@ -116,7 +116,7 @@ def metric_correlation(critic_score, physics_score, calc_type, subset=None, data
     elif calc_type == "prompt":
         # print("---Calculate unit: prompt---")
         if dataset == "mdmval":
-            f = open("data/mapping/mdm-fulleval_category.json")
+            f = open("data/mapping/mdmval_category.json")
         elif dataset == "mdmtrain":
             f = open("data/mapping/mdmtrain_category.json")
         category_to_idx = json.load(f)
@@ -152,7 +152,7 @@ if __name__ == "__main__":
     
     # critic_score = np.load("stats/norm_lossplcc.npy") # (5823, 2) 用MotionCritic所给的原始模型进行评测
     critic_score = np.load("stats/norm_lossplcc_perprompt_phys0.3_mdmval.npy") # (5823, 2) 用MotionCritic所给的原始模型进行评测
-    physics_score= np.load("data/mpjpe/mdmval_mpjpe.npy")
+    physics_score= np.load("data/phys_annotation/mdmval_mpjpe.npy")
     
     # calc_type = "pair", "quat", "batch", "prompt", "total"
     spearman_corr, kendall_tau, pearson_corr, spearman_p, kendall_p, pearson_p = metric_correlation(critic_score, physics_score, calc_type="total")

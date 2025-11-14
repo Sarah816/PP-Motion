@@ -25,11 +25,11 @@ def reconstruct_dataset_overlap():
         match_dataset = json.load(f)
     new_len = len(match_dataset)
     print("match length: ", new_len)
-    mpjpe_better = np.load("data/mpjpe/mdmtrain_old_mpjpe_better.npy")
-    mpjpe_worse = np.load("data/mpjpe/mdmtrain_old_mpjpe_worse.npy")
+    mpjpe_better = np.load("data/phys_annotation/mdmtrain_old_mpjpe_better.npy")
+    mpjpe_worse = np.load("data/phys_annotation/mdmtrain_old_mpjpe_worse.npy")
     mpjpe_better_new = np.zeros(new_len, dtype=np.float32)
     mpjpe_worse_new = np.zeros(new_len, dtype=np.float32)
-    dataset_new = torch.load("data/motion_dataset/mlist_mdmfull_train_corrected.pth")
+    dataset_new = torch.load("data/motion_dataset/mlist_mdmfull_train.pth")
     dataset_overlap = []
     for i in tqdm(range(new_len)):
         idx_new, idx_old = match_dataset[i]
@@ -37,11 +37,11 @@ def reconstruct_dataset_overlap():
         mpjpe_better_new[i] = mpjpe_better[idx_old]
         mpjpe_worse_new[i] = mpjpe_worse[idx_old]
     # torch.save(dataset_overlap, "data/motion_dataset/mlist_mdmfull_train_overlap.pth")
-    np.save("data/mpjpe/mdmtrain_mpjpe_better.npy", mpjpe_better_new)
-    np.save("data/mpjpe/mdmtrain_mpjpe_worse.npy", mpjpe_worse_new)
+    np.save("data/phys_annotation/mdmtrain_mpjpe_better.npy", mpjpe_better_new)
+    np.save("data/phys_annotation/mdmtrain_mpjpe_worse.npy", mpjpe_worse_new)
         
 def check_better():
-    data = torch.load("data/motion_dataset/mlist_mdmfull_train_corrected.pth")
+    data = torch.load("data/motion_dataset/mlist_mdmfull_train.pth")
     for i in tqdm(range(0, len(data), 3)):
         better1 = data[i]["motion_better"]
         better2 = data[i+1]["motion_better"]
@@ -52,13 +52,13 @@ def check_better():
 def reconstruct_dataset():
     total_len = 46740
     total_mpjpe = np.zeros((total_len, 2))
-    current_better = np.load("data/mpjpe/mdmtrain_mpjpe_better.npy")
-    current_worse = np.load("data/mpjpe/mdmtrain_mpjpe_worse.npy")
+    current_better = np.load("data/phys_annotation/mdmtrain_mpjpe_better.npy")
+    current_worse = np.load("data/phys_annotation/mdmtrain_mpjpe_worse.npy")
     flag = 0
     with open('data/finetune_index.json', 'r') as f:
         finetune_index = json.load(f)
-    new_better = np.load("data/mpjpe/mpjpe_better_new.npy")
-    new_worse = np.load("data/mpjpe/mpjpe_worse_new.npy")
+    new_better = np.load("data/phys_annotation/mpjpe_better_new.npy")
+    new_worse = np.load("data/phys_annotation/mpjpe_worse_new.npy")
     for idx in tqdm(finetune_index):
         total_mpjpe[idx][0] = new_better[flag]
         total_mpjpe[idx][1] = new_worse[flag]
@@ -73,13 +73,13 @@ def reconstruct_dataset():
     missing_indices = np.where(total_mpjpe[:] == 0)[0]
     assert(len(missing_indices) == 0)
     total_mpjpe = total_mpjpe.astype(np.float32)
-    np.save("data/mpjpe/mdmtrain_mpjpe.npy", total_mpjpe)
+    np.save("data/phys_annotation/mdmtrain_mpjpe.npy", total_mpjpe)
         
 def reconstruct_mpjpe():
     total_len = 46740
     total_mpjpe = np.zeros((total_len, 2))
-    old_mpjpe = np.load("data/mpjpe/mdmtrain_mpjpe_old.npy")
-    new_mpjpe = np.load("data/mpjpe/mdmtrain_mpjpe_new.npy")
+    old_mpjpe = np.load("data/phys_annotation/mdmtrain_mpjpe_old.npy")
+    new_mpjpe = np.load("data/phys_annotation/mdmtrain_mpjpe_new.npy")
     print(old_mpjpe.shape, new_mpjpe.shape)
     with open('data/finetune_index.json', 'r') as f1:
         finetune_index = json.load(f1)
@@ -96,17 +96,17 @@ def reconstruct_mpjpe():
         total_mpjpe[new_idx] = old_mpjpe[old_idx]
     missing_indices = np.where(total_mpjpe[:] == 0)[0]
     assert(len(missing_indices) == 0)
-    np.save("data/mpjpe/mdmtrain_mpjpe_corrected.npy", total_mpjpe.astype(np.float32))
+    np.save("data/phys_annotation/mdmtrain_mpjpe_corrected.npy", total_mpjpe.astype(np.float32))
 
-# better = np.load("data/mpjpe/mpjpe_better_new.npy")
-# worse = np.load("data/mpjpe/mpjpe_worse_new.npy")
+# better = np.load("data/phys_annotation/mpjpe_better_new.npy")
+# worse = np.load("data/phys_annotation/mpjpe_worse_new.npy")
 # total_mpjpe = np.stack((better, worse), axis=-1).astype(np.float32)
 # print(total_mpjpe.shape)
-# np.save("data/mpjpe/mdmtrain_mpjpe_new.npy", total_mpjpe)
+# np.save("data/phys_annotation/mdmtrain_mpjpe_new.npy", total_mpjpe)
 # exit(0)
 
 def plot_distribution():
-    total_mpjpe = np.load("data/mpjpe/mdmtrain_mpjpe.npy")
+    total_mpjpe = np.load("data/phys_annotation/mdmtrain_mpjpe.npy")
     # print(np.max(total_mpjpe[:, 0]))
     # print(np.min(total_mpjpe[:, 0]))
     # print(np.mean(total_mpjpe[:, 0]))
@@ -183,15 +183,15 @@ def map_flame_eval():
     
     with open("data/mapping/flame_compare.json") as f:
         mapping = json.load(f)
-    mpjpe = np.load("data/mpjpe/flame_mpjpe.npy")
+    mpjpe = np.load("data/phys_annotation/flame_mpjpe.npy")
     new_mpjpe = np.zeros((603, 2))
     for index_old, index_new in mapping:
         new_mpjpe[index_new] = mpjpe[index_old]
-    np.save("data/mpjpe/flame_fulleval_mpjpe.npy", new_mpjpe)
+    np.save("data/phys_annotation/flame_fulleval_mpjpe.npy", new_mpjpe)
         
 
 def find_duplicate_indices():
-    dataset = torch.load("data/motion_dataset/mlist_mdmtrain_corrected.pth")
+    dataset = torch.load("data/motion_dataset/mlist_mdmtrain.pth")
     array_to_indices = {}
     # print(torch.all(dataset[0]["motion_better"] == dataset[1]["motion_better"]))
     # tensor1 = dataset[0]["motion_better"]
@@ -248,12 +248,12 @@ def categorize_by_label():
     print('total category nums', len(category_to_idx.items()))
     
 def normalize_mpjpe():
-    data = np.load("data/mpjpe/mdmval_mpjpe.npy")
+    data = np.load("data/phys_annotation/mdmval_mpjpe.npy")
     mean = np.mean(data)
     std = np.std(data)
     data_norm = - (data - mean) / std # 标准化为mean=0，std=1的数据分布，并且颠倒顺序
     print(np.mean(data_norm), np.std(data_norm))
-    np.save("data/mpjpe/mdmval_mpjpe_norm.npy", data_norm)
+    np.save("data/phys_annotation/mdmval_mpjpe_norm.npy", data_norm)
 
 def normalize_score():
     mdmval_score = np.load("data/scores/norm_lossplcc_perprompt_phys0.3/score_mdmval_checkpoint_latest.npy")
@@ -276,7 +276,7 @@ def normalize_score():
 
 def dataset_stat():
     # 统计数据集的均值和标准差
-    data = np.load("data/mpjpe/mdmtrain_mpjpe_corrected.npy")
+    data = np.load("data/phys_annotation/mdmtrain_mpjpe_corrected.npy")
     mean = np.mean(data)
     std = np.std(data)
     print("Mean: ", mean)
@@ -287,7 +287,7 @@ def dataset_stat():
 
 def stat_for_visualize():
     score = np.load("data/scores/norm_lossplcc_perprompt_phys0.3/score_mdmval_checkpoint_latest.npy")
-    mpjpe = np.load("data/mpjpe/mdmval_mpjpe.npy")
+    mpjpe = np.load("data/phys_annotation/mdmval_mpjpe.npy")
     np.set_printoptions(precision=2, floatmode='fixed', suppress=True)  # 固定保留2位小数
     idx = []
     for i in range(500, 1000):

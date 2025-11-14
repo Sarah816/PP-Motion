@@ -8,9 +8,7 @@ assets/
 
 !MDMCritic/criexample.pth
 MotionCritic/wandb
-MotionCritic/data/
-!MotionCritic/data/mpjpe/
-!MotionCritic/data/mapping/
+MotionCritic/data/*
 MotionCritic/datasets/
 MotionCritic/pretrained/
 MotionCritic/marked/

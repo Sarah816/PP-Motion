@@ -571,7 +571,7 @@ def critic_data_from_json(file_path, output_path):
             total_motion.append({'motion_better': better[i], 'motion_worse': worse[i]})
     # print(len(category_index.keys()))
     if len(category_index) != 0:
-        with open(f'data/mapping/{val_dataset}-fulleval_category.json', 'w') as file:
+        with open(f'data/mapping/{val_dataset}_category.json', 'w') as file:
             json.dump(category_index, file)
     print("motion length: ", len(total_motion))
     print(f"Saving critic data to {output_path}")
@@ -620,20 +620,20 @@ if __name__ == '__main__':
     # Load human annotation file and physics annotation file
     if val_dataset == 'mdmval':
         file_path = os.path.join(PROJ_DIR, f'metric/metrics_data/marked/mdm-fulleval.json')
-        physics_score = np.load(os.path.join(PROJ_DIR, f'data/mpjpe/mdmval_mpjpe_norm.npy')) # (5823, 2)
+        physics_score = np.load(os.path.join(PROJ_DIR, f'data/phys_annotation/mdmval_mpjpe_norm.npy')) # (5823, 2)
     else:
         file_path = os.path.join(PROJ_DIR, f'metric/metrics_data/marked/flame-fulleval.json')
-        physics_score = np.load(os.path.join(PROJ_DIR, f'data/mpjpe/flame_fulleval_mpjpe_norm.npy'))
+        physics_score = np.load(os.path.join(PROJ_DIR, f'data/phys_annotation/flame_mpjpe_norm.npy'))
     print(f"Evaluating, dataset is {val_dataset}, annotation file path is {file_path}")
     
     # Load or process validation motion data
-    val_data_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{val_dataset}_fulleval.pth')
+    val_data_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{val_dataset}.pth')
     if not os.path.exists(val_data_pth):
         print(f"***Processing val dataset***")
         critic_data_from_json(file_path, val_data_pth)
     
     # Load or compute PP-Motion model score
-    model_score_pth = os.path.join(PROJ_DIR, f'data/scores/{exp_name}/score_{val_dataset}_{checkpoint}.npy')
+    model_score_pth = os.path.join(PROJ_DIR, f'stats/scores/{exp_name}/score_{val_dataset}_{checkpoint}.npy')
     if not os.path.exists(model_score_pth):
         print(f"***Calculating PP-Motion model score***")
         model_score = get_val_scores(val_data_pth, output_pth=model_score_pth, exp_name=exp_name, ckp=checkpoint)
@@ -648,10 +648,10 @@ if __name__ == '__main__':
     # Add other metrics
     if args.calc_baseline_metric:
         metrics.append('MotionCritic')
-        mocritic_score_pth = os.path.join(PROJ_DIR, f'data/scores/mocritic_pretrained/score_{val_dataset}_mocritic_pre.npy')
+        mocritic_score_pth = os.path.join(PROJ_DIR, f'stats/scores/motion-critic_pretrained/score_{val_dataset}_checkpoint_latest.npy')
         if not os.path.exists(mocritic_score_pth):
             print(f"***Calculating MotionCritic score***")
-            mocritic_score = get_val_scores(val_data_pth, output_pth=mocritic_score_pth, exp_name="mocritic_pretrained", ckp="mocritic_pre")
+            mocritic_score = get_val_scores(val_data_pth, output_pth=mocritic_score_pth, exp_name="motion-critic_pretrained", ckp="checkpoint_latset")
         else:
             mocritic_score = torch.from_numpy(np.load(mocritic_score_pth))
     
@@ -673,7 +673,7 @@ if __name__ == '__main__':
     
     # Prepare for calculating metrics within each prompt category
     if calc_perprompt:
-        with open("data/mapping/mdm-fulleval_category.json") as f:
+        with open("data/mapping/mdmval_category.json") as f:
             mdm_category_to_idx = json.load(f)
         humanact12_keys = ["mdma-00", "mdma-01", "mdma-02", "mdma-03", "mdma-04", "mdma-05", "mdma-06", "mdma-07", "mdma-08", "mdma-09", "mdma-10", "mdma-11"]
     
@@ -691,6 +691,7 @@ if __name__ == '__main__':
             df_pearson = pd.DataFrame()
             
     # Start calculating metrics
+    metric_results = []
     for metric in metrics:
         print('### Calculating Metric:', metric)
         if metric == 'Model':
@@ -711,21 +712,26 @@ if __name__ == '__main__':
         for metric_key, metric_score in scores.items():
             
             # 1. Calculate total
-            print(f"evaluating total")
+            # First calculate accuracy and log loss according to human perception annotation
             acc, log_loss_value = calc_critic_metric(metric_score, metric=metric_key)
+            # Then calculate physics correlation according to physical annotation
             if val_dataset == "flame":
                 spearman_corr, kendall_tau, pearson_corr = metric_correlation(physics_score, metric_score.numpy(), calc_type="total", dataset=val_dataset)
             else:
                 spearman_corr, kendall_tau, pearson_corr = metric_correlation(physics_score, metric_score.numpy(), calc_type="prompt", dataset=val_dataset)
             if metric_key != "Model" and metric_key != "MotionCritic":
                 spearman_corr, kendall_tau, pearson_corr = -spearman_corr, -kendall_tau, -pearson_corr
-            print({
+            result = {
+                "metric": metric_key,
                 "acc": acc,
                 "log_loss": log_loss_value,
                 "pearson_corr": pearson_corr,
                 "spearman_corr": spearman_corr,
                 "kendall_corr": kendall_tau,
-            })
+            }
+            
+            print(result)
+            metric_results.append(result)
             
             if calc_perprompt:
                 # save total evaluation to dataframes
@@ -755,6 +761,8 @@ if __name__ == '__main__':
                 df_spearman.loc[metric_key, 'mdmu'] = spearman_corr
                 df_kendall.loc[metric_key, 'mdmu'] = kendall_tau
                 df_pearson.loc[metric_key, 'mdmu'] = pearson_corr
+    
+    json.dump(metric_results, open(f'stats/metric_results_{val_dataset}_{exp_name}.json', 'w'), indent=4)
     
     if args.calc_perprompt:
         df_spearman.to_csv('stats/metric_spearman_perprompt.csv', float_format='%.3f', index=True)

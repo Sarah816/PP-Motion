@@ -117,7 +117,7 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
     val_dataset = "flame"
-    val_pth_name = f"mlist_{val_dataset}_fulleval.pth"
+    val_pth_name = f"mlist_{val_dataset}.pth"
     val_pth = os.path.join(PROJ_DIR, 'data/motion_dataset/'+ val_pth_name)
     exp_name = "norm_lossplcc_perprompt_phys0.3"
     checkpoint = "checkpoint_latest"
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     
     metric_func(all_scores)
 
-    # physics_score= np.load(f"data/mpjpe/{val_dataset}_mpjpe.npy")
+    # physics_score= np.load(f"data/phys_annotation/{val_dataset}_mpjpe.npy")
     # spearman_corr, kendall_tau, pearson_corr, spearman_p, kendall_p, pearson_p = metric_correlation(all_scores.numpy(), physics_score, calc_type="prompt")
     # print("spearman corr: ", spearman_corr, " p: ", spearman_p)
     # print("kendall tau: ", kendall_tau, " p: ", kendall_p)

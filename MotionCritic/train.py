@@ -33,9 +33,9 @@ checkpoint_interval = 25
 
 # with open('data/mapping/motion_better_duplicate.json') as f:
 #     duplicate = json.load(f)
-# mpjpe = np.load('data/mpjpe/mdmtrain_mpjpe_corrected_org.npy')
-# mpjpe_norm = np.load('data/mpjpe/mdmtrain_mpjpe_corrected_norm.npy')
-# mpjpe_reverse = np.load('data/mpjpe/mdmtrain_mpjpe_corrected_reverse.npy') # (46740, 2)
+# mpjpe = np.load('data/phys_annotation/mdmtrain_mpjpe_corrected_org.npy')
+# mpjpe_norm = np.load('data/phys_annotation/mdmtrain_mpjpe_corrected_norm.npy')
+# mpjpe_reverse = np.load('data/phys_annotation/mdmtrain_mpjpe_corrected_reverse.npy') # (46740, 2)
 # for index_list in duplicate:
 #     idx0 = index_list[0]
 #     if len(index_list) >= 2:
@@ -48,9 +48,9 @@ checkpoint_interval = 25
 #         mpjpe[idx2, 0] = mpjpe[idx0, 0]
 #         mpjpe_norm[idx2, 0] = mpjpe_norm[idx0, 0]
 #         mpjpe_reverse[idx2, 0] = mpjpe_reverse[idx0, 0]
-# np.save('data/mpjpe/mdmtrain_mpjpe_corrected.npy', mpjpe)
-# np.save('data/mpjpe/mdmtrain_mpjpe_corrected_reverse.npy', mpjpe_reverse)
-# np.save('data/mpjpe/mdmtrain_mpjpe_corrected_norm.npy', mpjpe_norm)
+# np.save('data/phys_annotation/mdmtrain_mpjpe_corrected.npy', mpjpe)
+# np.save('data/phys_annotation/mdmtrain_mpjpe_corrected_reverse.npy', mpjpe_reverse)
+# np.save('data/phys_annotation/mdmtrain_mpjpe_corrected_norm.npy', mpjpe_norm)
 
 
 def parse_args():
@@ -121,38 +121,29 @@ def parse_args():
 
 
 def create_data_loaders(dataset, batch_size):
-    train_dataset = MotionCategoryDataset("mdmtrain", dataset_type=dataset)
+    train_dataset = MotionCategoryDataset("mdmtrain")
     train_sampler = CategoryBatchSampler(train_dataset, batch_size=batch_size, drop_last=True)
     train_loader = DataLoader(train_dataset, batch_sampler=train_sampler)
-    val_dataset = MotionCategoryDataset("mdmval", dataset_type=dataset)
+    val_dataset = MotionCategoryDataset("mdmval")
     val_sampler = CategoryBatchSampler(val_dataset, batch_size=500, drop_last=False) # batch_size设置的比较大，使得每次evaluate时，同一个prompt的所有motion都在一个batch中，每条数据都能被取到
     val_loader = DataLoader(val_dataset, batch_sampler=val_sampler)
     
-    # train_motion_pairs = motion_pair_dataset(dataset_name="mdmtrain", dataset_type=dataset)
+    # train_motion_pairs = motion_pair_dataset(dataset_name="mdmtrain")
     # train_loader = DataLoader(train_motion_pairs, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2)
-    # val_motion_pairs = motion_pair_dataset(dataset_name="mdmval", dataset_type=dataset)
+    # val_motion_pairs = motion_pair_dataset(dataset_name="mdmval")
     # val_loader = DataLoader(val_motion_pairs, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2)
-    # val_motion_pairs = MotionCategoryDataset(dataset_name="mdmval", dataset_type=dataset)
+    # val_motion_pairs = MotionCategoryDataset(dataset_name="mdmval")
     # val_loader = DataLoader(val_motion_pairs, batch_size=1, shuffle=False, num_workers=8, pin_memory=True, prefetch_factor=2)
     return train_loader, val_loader
 
 class MotionCategoryDataset(Dataset):
-    def __init__(self, dataset_name, dataset_type):
-        if dataset_name == "mdmtrain":
-            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}_{dataset_type}.pth')
-        elif dataset_name == "mdmval":
-            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}.pth')
-        else:
-            raise ValueError("Unsupported dataset name.")
-            
+    def __init__(self, dataset_name):
+        motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}.pth')
         print(f"Loading dataset from {motion_dataset_pth}")
         self.data = torch.load(motion_dataset_pth)
 
         if enable_phys:
-            if dataset_name == "mdmtrain":
-                mpjpe_path = os.path.join(PROJ_DIR, f'data/mpjpe/{dataset_name}_mpjpe_{dataset_type}_norm.npy')
-            elif dataset_name == "mdmval":
-                mpjpe_path = os.path.join(PROJ_DIR, f'data/mpjpe/{dataset_name}_mpjpe_norm.npy')
+            mpjpe_path = os.path.join(PROJ_DIR, f'data/phys_annotation/{dataset_name}_mpjpe_norm.npy')
             print(f"Loading mpjpe from {mpjpe_path}")
             mpjpe = np.load(mpjpe_path)
             for i in range(len(self.data)):
@@ -218,68 +209,13 @@ class CategoryBatchSampler(Sampler):
         return total_batches
 
 
-# class MotionCategoryDataset(Dataset):
-#     def __init__(self, dataset_name, dataset_type):
-#         if dataset_name == "mdmtrain":
-#             motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}_{dataset_type}.pth')
-#         elif dataset_name == "mdmval":
-#             motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}.pth')
-#         else:
-#             raise ValueError("Unsupported dataset name.")
-            
-#         print(f"Loading dataset from {motion_dataset_pth}")
-#         self.data = torch.load(motion_dataset_pth)
-
-#         if enable_phys:
-#             if dataset_name == "mdmtrain":
-#                 mpjpe_path = os.path.join(PROJ_DIR, f'data/mpjpe/{dataset_name}_mpjpe_{dataset_type}_norm.npy')
-#             elif dataset_name == "mdmval":
-#                 mpjpe_path = os.path.join(PROJ_DIR, f'data/mpjpe/{dataset_name}_mpjpe_norm.npy')
-#             print(f"Loading mpjpe from {mpjpe_path}")
-#             mpjpe = np.load(mpjpe_path)
-#             for i in range(len(self.data)):
-#                 self.data[i]['mpjpe_better'] = mpjpe[i][0]
-#                 self.data[i]['mpjpe_worse'] = mpjpe[i][1]
-#         print(f"Dataset {dataset_name} length: {len(self.data)}")
-        
-#         category_json_path = os.path.join(PROJ_DIR, f"data/mapping/{dataset_name}_category.json")
-#         with open(category_json_path, "r") as f:
-#             # 假设 json 格式为 { "label1": [idx1, idx2, ...], "label2": [...], ... }
-#             self.category_to_idx = json.load(f)
-#         self.labels = list(self.category_to_idx.keys())
-#         print(f"Loaded category json from {category_json_path}")
-#         print('Category num:', len(self.labels))
-    
-#     def __len__(self):
-#         return len(self.labels) # 应当为52
-    
-#     def __getitem__(self, index):
-#         # 如果使用分类加载，每个样本为一个 label 对应的所有 motion
-#         label = self.labels[index]
-#         idxs = self.category_to_idx[label]
-#         datasets = {}
-#         for key in ["motion_better", "motion_worse"]:
-#             data_list = [self.data[int(i)][key] for i in idxs]
-#             datasets[key] = torch.stack(data_list)
-#         for key in ["mpjpe_better", "mpjpe_worse"]:
-#             data_list = [self.data[int(i)][key] for i in idxs]
-#             datasets[key] = torch.tensor(data_list)
-#         datasets['label'] = label
-#         return datasets
-
 class motion_pair_dataset(Dataset):
-    def __init__(self, dataset_name, dataset_type):
-        if dataset_name == "mdmtrain":
-            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}_{dataset_type}.pth')
-        elif dataset_name == "mdmval":
-            motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}.pth')
+    def __init__(self, dataset_name):
+        motion_dataset_pth = os.path.join(PROJ_DIR, f'data/motion_dataset/mlist_{dataset_name}.pth')
         print(f"Loading dataset from {motion_dataset_pth}")
         self.data = torch.load(motion_dataset_pth)
         if enable_phys:
-            if dataset_name == "mdmtrain":
-                mpjpe_path = os.path.join(PROJ_DIR, f'data/mpjpe/{dataset_name}_mpjpe_{dataset_type}_norm.npy')
-            elif dataset_name == "mdmval":
-                mpjpe_path = os.path.join(PROJ_DIR, f'data/mpjpe/{dataset_name}_mpjpe_norm.npy')
+            mpjpe_path = os.path.join(PROJ_DIR, f'data/phys_annotation/{dataset_name}_mpjpe_norm.npy')
             print(f"Loading mpjpe from {mpjpe_path}")
             mpjpe = np.load(mpjpe_path)
             for i in range(len(self.data)):

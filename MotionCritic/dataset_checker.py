@@ -248,6 +248,3 @@ def main():
 
 if __name__ == "__main__":
     main() 
-
-# 
-# python dataset_checker.py --dataset1 motion_dataset/mlist_mdmfull_trainshuffle.pth --dataset2 motion_dataset/mlist_mdmfull_train_corrected.pth --method hash --detailed
