@@ -4,6 +4,7 @@ PROJ_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(PROJ_DIR)
 
 from lib.model.critic import MotionCritic
+from lib.model.load_critic import load_critic
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -116,10 +117,10 @@ if __name__ == "__main__":
 
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-    val_dataset = "flame"
+    val_dataset = "mdmval"
     val_pth_name = f"mlist_{val_dataset}.pth"
     val_pth = os.path.join(PROJ_DIR, 'data/motion_dataset/'+ val_pth_name)
-    exp_name = "norm_lossplcc_perprompt_phys0.3"
+    exp_name = "pp-motion_pretrained"
     checkpoint = "checkpoint_latest"
     output_pth = os.path.join(PROJ_DIR, f'data/scores/{exp_name}/score_{val_dataset}_{checkpoint}.npy')
     os.makedirs(os.path.dirname(output_pth), exist_ok=True)
