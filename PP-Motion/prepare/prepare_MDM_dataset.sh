@@ -1,4 +1,4 @@
-cd MDMCritic
+cd ../MDMCritic
 
 # prepare a2m dataset
 mkdir -p dataset/

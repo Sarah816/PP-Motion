@@ -5,19 +5,19 @@
 *.mp4
 wandb/
 
-MotionCritic/wandb
-MotionCritic/data/*
-MotionCritic/datasets/
-MotionCritic/pretrained/
-MotionCritic/marked/
-MotionCritic/wandb/
-MotionCritic/metric/metrics_data/
-MotionCritic/metric/body_models/
-MotionCritic/pics/
-MotionCritic/stats/
-MotionCritic/render_output
-MotionCritic/body_models
-MotionCritic/data_process
+PP-Motion/wandb
+PP-Motion/data/*
+PP-Motion/datasets/
+PP-Motion/pretrained/
+PP-Motion/marked/
+PP-Motion/wandb/
+PP-Motion/metric/metrics_data/
+PP-Motion/metric/body_models/
+PP-Motion/pics/
+PP-Motion/stats/
+PP-Motion/render_output
+PP-Motion/body_models
+PP-Motion/data_process
 
 !MDMCritic/criexample.pth
 MDMCritic/body_models/
