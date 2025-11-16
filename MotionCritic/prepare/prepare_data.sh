@@ -1,9 +1,11 @@
-cd PP-Motion
 mkdir -p data
 cd data
 
 echo -e "download physical annotation and save to data/phys_annotation\n"
 gdown --folder https://drive.google.com/drive/folders/1rWq5GJEE_Cnkh3hvUZ51EBUyp3aaS06P
+
+echo -e "download human perception annotation and save to data/human_annotation\n"
+gdown --folder https://drive.google.com/drive/folders/1GclBr9vUmzo3tWsw5STq3jOpTdFq1gJk
 
 echo -e "download MotionPercept dataset and dave to data/motion_dataset\n"
 gdown --folder https://drive.google.com/drive/folders/1A8x4o_xJxsVTVETJ2VspEjmg0wVtW29F

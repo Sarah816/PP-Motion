@@ -106,7 +106,7 @@ def get_val_scores(dataset_pth, output_pth, exp_name, ckp="checkpoint_latest"):
         scores.detach().cpu()
 
     all_scores = torch.cat(all_scores, dim=0)
-    os.makedirs(f"data/scores/{exp_name}", exist_ok=True)
+    os.makedirs(f"stats/scores/{exp_name}", exist_ok=True)
     print("Saving val scores to: ", output_pth)
     np.save(output_pth, all_scores.numpy())
     return all_scores

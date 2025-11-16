@@ -1,4 +1,3 @@
-cd PP-Motion
 # prepare smpl files
 mkdir -p body_models
 cd body_models/

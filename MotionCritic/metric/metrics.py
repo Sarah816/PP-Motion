@@ -619,10 +619,10 @@ if __name__ == '__main__':
     
     # Load human annotation file and physics annotation file
     if val_dataset == 'mdmval':
-        file_path = os.path.join(PROJ_DIR, f'metric/metrics_data/marked/mdm-fulleval.json')
+        file_path = os.path.join(PROJ_DIR, f'data/human_annotation/mdm-fulleval.json')
         physics_score = np.load(os.path.join(PROJ_DIR, f'data/phys_annotation/mdmval_mpjpe_norm.npy')) # (5823, 2)
     else:
-        file_path = os.path.join(PROJ_DIR, f'metric/metrics_data/marked/flame-fulleval.json')
+        file_path = os.path.join(PROJ_DIR, f'data/human_annotation/flame-fulleval.json')
         physics_score = np.load(os.path.join(PROJ_DIR, f'data/phys_annotation/flame_mpjpe_norm.npy'))
     print(f"Evaluating, dataset is {val_dataset}, annotation file path is {file_path}")
     

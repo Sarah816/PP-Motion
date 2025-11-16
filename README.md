@@ -23,6 +23,7 @@ conda activate mocritic
 
 Use the following script to download dataset and pretrained models.
 ```
+cd PP-Motion
 bash prepare/prepare_data.sh
 bash prepare/prepare_pretrained.sh
 ```
@@ -40,32 +41,31 @@ PP-Motion/
 │   ├── metrics.sh
 │   ├── render.sh
 │   ├── data/
-│       ├── mapping/                         # Data-prompt mapping, used for per-prompt training and evaluation
+│       ├── mapping/                     # Data-prompt mapping, used for per-prompt training and evaluation
 │           ├── mdmval_category.json
 │           └── mdmtrain_category.json
-│       ├── phys_annotation/                 # Physical annotations
+│       ├── phys_annotation/             # Physical annotations
 │           ├── mdmtrain_mpjpe_norm.npy
 │           ├── mdmval_mpjpe_norm.npy
 │           └── flame_mpjpe_norm.npy
+│       ├── human_annotation/            # Human perception annotations
+│           ├── flame-fulleval.json
+│           └── mdm-fulleval.json
 │       ├── motion_dataset/
 │           ├── visexample.pth
 │           ├── mlist_flame.pth
 │           ├── mlist_mdmtrain.pth
 │           └── mlist_mdmval.pth
-│       └── gt-packed/                       # Only used for metric calculation
-│   ├── output/             # Checkpoints and pretrained models are saved here
+│       └── gt-packed/                   # Optional, only used for gt-based metric calculation
+│   ├── output/    # Checkpoints and pretrained models are saved here
 │       ├── motion-critic_pretrained
-│           └── checkpoint_latest.pth        # MotionCritic model
+│           └── checkpoint_latest.pth    # MotionCritic model
 │       └── pp-motion_pretrained
-│           └── checkpoint_latest.pth        # PP-Motion model (Ours)
-│   └── stats/              # Metric statistics are saved here
+│           └── checkpoint_latest.pth    # PP-Motion model (Ours)
+│   └── stats/     # Metric statistics are saved here
 └── MDMCritic/
 ```
 
-### Dataset Documentation
-
-- [Dataset](docs/dataset.md)
-- [Motion files](docs/motion.md)
 
 ## Quick Demo
 
@@ -73,7 +73,6 @@ PP-Motion/
 Quickly get PP-Motion score for a motion sequence and render the motion:
 
 ```
-cd PP-Motion
 python visexample.py
 ```
 
@@ -107,7 +106,6 @@ render_multi(motion_seq, device, comments, output_paths, pose_format="rotvec")
 If you only want to render a motion sequence from a dataset:
 
 ```
-cd PP-Motion
 bash render.sh
 ```
 
@@ -122,7 +120,6 @@ Place your model checkpoint in the directory: `output/{exp_name}/checkpoint_late
 
 Example:
 ```
-    
 output/pp-motion_pretrained/checkpoint_latest.pth     # Checkpoint for PP-Motion model
 output/motion-critic_pretrained/checkpoint_latest.pth # Checkpoint for MotionCritic (baseline) model
 
@@ -131,7 +128,6 @@ output/motion-critic_pretrained/checkpoint_latest.pth # Checkpoint for MotionCri
 2. **Run evaluation**
 
 ```bash
-cd PP-Motion
 bash metrics.sh
 ```
 
@@ -150,6 +146,12 @@ Or run manually:
     # --calc_perprompt       # Compute per-prompt correlations
 ```
 
+If you add `--calc_gt_metric`, you need to first download gt data:
+
+```
+bash prepare/prepare_gt.sh
+```
+
 3. **Results**
     - Metric evaluation results are saved in: `stats/metric_results_{val_dataset}_{exp_name}.json`
     - Intermediate results (metric output scores) are saved in: `stats/scores/{exp_name}/score_{val_dataset}_{checkpoint}.npy`
@@ -157,7 +159,6 @@ Or run manually:
 ## Training PP-Motion
 
 ```bash
-cd PP-Motion
 bash train.sh
 ```
 
@@ -175,7 +176,21 @@ This training script use `PP-Motion/data/motion_dataset/mlist_mdmtrain.pth` as t
 
 ## Generating Physical Annotation
 
-Details about generating physical annotations can be found in `PP-Annotation` folder.
+Details about generating physical annotations can be found in `PP-Annotation` folder. Run the script below from the project root directory:
+
+```
+git submodule update --init --recursive
+cd PP-Annotation
+```
+
+## More Information
+
+### Dataset Documentation
+
+- [Dataset](docs/dataset.md)
+- [Motion files](docs/motion.md)
+
+<!-- ### Trouble Shooting -->
 
 
 ## Citation
@@ -201,7 +216,6 @@ This repository is built on top of:
 
 If you use PP-Motion in your work, please also cite the original datasets and methods on which our work is based.
 
-MotionCritic:
 ```bibtex
 @inproceedings{motioncritic2025,
     title={Aligning Motion Generation with Human Perceptions},
