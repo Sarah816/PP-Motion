@@ -6,7 +6,7 @@ This is the official PyTorch implementation of the paper "PP-Motion: Physical-Pe
 
 ![framework](./assets/pipeline.jpg)
 
-## Preparation
+## Dependencies
 
 ### Environment
 
@@ -35,7 +35,7 @@ bash prepare/prepare_smpl.sh
 ### Important files
 ```
 PP-Motion/                   
-├── MotionCritic/      
+├── PP-Motion/      
 │   ├── train.sh
 │   ├── metrics.sh
 │   ├── render.sh
@@ -67,11 +67,13 @@ PP-Motion/
 - [Dataset](docs/dataset.md)
 - [Motion files](docs/motion.md)
 
-## Quick Demo and Rendering
+## Quick Demo
+
+### Using PP-Motion as Metric
 Quickly get PP-Motion score for a motion sequence and render the motion:
 
 ```
-cd MotionCritic
+cd PP-Motion
 python visexample.py
 ```
 
@@ -101,10 +103,11 @@ motion_seq = motion_seq.permute(0, 2, 3, 1) # [batch_size, 25, 3, num_frames=60]
 render_multi(motion_seq, device, comments, output_paths, pose_format="rotvec")
 ```
 
+### Rendering
 If you only want to render a motion sequence from a dataset:
 
 ```
-cd MotionCritic
+cd PP-Motion
 bash render.sh
 ```
 
@@ -128,7 +131,7 @@ output/motion-critic_pretrained/checkpoint_latest.pth # Checkpoint for MotionCri
 2. **Run evaluation**
 
 ```bash
-cd MotionCritic
+cd PP-Motion
 bash metrics.sh
 ```
 
@@ -154,7 +157,7 @@ Or run manually:
 ## Training PP-Motion
 
 ```bash
-cd MotionCritic
+cd PP-Motion
 bash train.sh
 ```
 
@@ -167,7 +170,12 @@ python train.py --exp_name pp-motion \
     --loss_type "plcc" --enable_phys --phys_coef 0.2 \
 ```
 
-This training script use `MotionCritic/data/motion_dataset/mlist_mdmtrain.pth` as training data, and `MotionCritic/data/motion_dataset/mlist_mdmval.pth` as evaluation data.
+This training script use `PP-Motion/data/motion_dataset/mlist_mdmtrain.pth` as training data, and `PP-Motion/data/motion_dataset/mlist_mdmval.pth` as evaluation data.
+
+
+## Generating Physical Annotation
+
+Details about generating physical annotations can be found in `PP-Annotation` folder.
 
 
 ## Citation
@@ -185,6 +193,12 @@ If you find our work useful for your project, please consider citing the paper:
 
 ## Acknowledgement
 
+This repository is built on top of: 
+* PP-Motion metric framework is from: [MotionCritic](https://github.com/ou524u/MotionCritic)
+* Physics annotation generation framework is from: [PHC](https://github.com/ZhengyiLuo/PHC)
+* Physics simulator is from: [IsaacGymEnvs](https://github.com/NVIDIA-Omniverse/IsaacGymEnvs)
+
+
 If you use PP-Motion in your work, please also cite the original datasets and methods on which our work is based.
 
 MotionCritic:
@@ -195,11 +209,12 @@ MotionCritic:
     booktitle={International Conference on Learning Representations (ICLR)},
     year={2025}
 }
-```
-
-MDM:
-
-```bibtex
+@inproceedings{Luo2023PerpetualHC,
+    author={Zhengyi Luo and Jinkun Cao and Alexander W. Winkler and Kris Kitani and Weipeng Xu},
+    title={Perpetual Humanoid Control for Real-time Simulated Avatars},
+    booktitle={International Conference on Computer Vision (ICCV)},
+    year={2023}
+}
 @inproceedings{
   tevet2023human,
   title={Human Motion Diffusion Model},
@@ -207,11 +222,6 @@ MDM:
   booktitle={The Eleventh International Conference on Learning Representations },
   year={2023}
 }
-```
-
-HumanAct12:
-
-```bibtex
 @inproceedings{guo2020action2motion,
   title={Action2motion: Conditioned generation of 3d human motions},
   author={Guo, Chuan and Zuo, Xinxin and Wang, Sen and Zou, Shihao and Sun, Qingyao and Deng, Annan and Gong, Minglun and Cheng, Li},
@@ -219,11 +229,6 @@ HumanAct12:
   pages={2021--2029},
   year={2020}
 }
-```
-
-FLAME:
-
-```bibtex
 @inproceedings{kim2023flame,
   title={Flame: Free-form language-based motion synthesis \& editing},
   author={Kim, Jihoon and Kim, Jiseob and Choi, Sungjoon},
@@ -233,11 +238,6 @@ FLAME:
   pages={8255--8263},
   year={2023}
 }
-```
-
-UESTC:
-
-```bibtex
 @inproceedings{ji2018large,
   title={A large-scale RGB-D database for arbitrary-view human action recognition},
   author={Ji, Yanli and Xu, Feixiang and Yang, Yang and Shen, Fumin and Shen, Heng Tao and Zheng, Wei-Shi},
@@ -245,23 +245,6 @@ UESTC:
   pages={1510--1518},
   year={2018}
 }
-```
-
-DSTFormer:
-
-```bibtex
-@inproceedings{zhu2023motionbert,
-  title={Motionbert: A unified perspective on learning human motion representations},
-  author={Zhu, Wentao and Ma, Xiaoxuan and Liu, Zhaoyang and Liu, Libin and Wu, Wayne and Wang, Yizhou},
-  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
-  pages={15085--15099},
-  year={2023}
-}
-```
-
-SMPL:
-
-```bibtex
 @incollection{loper2023smpl,
   title={SMPL: A skinned multi-person linear model},
   author={Loper, Matthew and Mahmood, Naureen and Romero, Javier and Pons-Moll, Gerard and Black, Michael J},

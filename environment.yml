@@ -1,4 +1,4 @@
-name: mocritic
+name: ppmotion
 channels:
   - conda-forge
   - anaconda

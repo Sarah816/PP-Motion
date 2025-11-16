@@ -1,5 +1,5 @@
 
-cd MotionCritic
+cd PP-Motion
 mkdir -p pretrained
 cd pretrained
 gdown https://drive.google.com/uc?id=1vifu1vktjCWDpyPpzGPugzHNalhsaMpq

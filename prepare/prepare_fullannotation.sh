@@ -1,5 +1,5 @@
 # download full annotations, in case you need
-cd MotionCritic
+cd PP-Motion
 cd marked
 mkdir -p mdm-full
 gdown https://drive.google.com/uc?id=1TpZ0nVvx2c84rYGmHsdLgNbu8gBwLGkA

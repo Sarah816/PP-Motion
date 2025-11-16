@@ -1,4 +1,4 @@
-cd MotionCritic
+cd PP-Motion
 mkdir -p data
 cd data
 

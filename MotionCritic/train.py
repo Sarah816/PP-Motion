@@ -127,13 +127,6 @@ def create_data_loaders(dataset, batch_size):
     val_dataset = MotionCategoryDataset("mdmval")
     val_sampler = CategoryBatchSampler(val_dataset, batch_size=500, drop_last=False) # batch_size设置的比较大，使得每次evaluate时，同一个prompt的所有motion都在一个batch中，每条数据都能被取到
     val_loader = DataLoader(val_dataset, batch_sampler=val_sampler)
-    
-    # train_motion_pairs = motion_pair_dataset(dataset_name="mdmtrain")
-    # train_loader = DataLoader(train_motion_pairs, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2)
-    # val_motion_pairs = motion_pair_dataset(dataset_name="mdmval")
-    # val_loader = DataLoader(val_motion_pairs, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2)
-    # val_motion_pairs = MotionCategoryDataset(dataset_name="mdmval")
-    # val_loader = DataLoader(val_motion_pairs, batch_size=1, shuffle=False, num_workers=8, pin_memory=True, prefetch_factor=2)
     return train_loader, val_loader
 
 class MotionCategoryDataset(Dataset):

@@ -1,4 +1,4 @@
-cd MotionCritic
+cd PP-Motion
 mkdir -p datasets
 cd datasets
 gdown https://drive.google.com/uc?id=1H5MAPBIAygGV5HSa2yIftWDdGq4fPEXB
