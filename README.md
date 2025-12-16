@@ -134,7 +134,7 @@ bash metrics.sh
 Or run manually:
 
 ```bash
-    python metric/metrics.py \
+python metric/metrics.py \
     --mode mdmval \
     --exp_name pp-motion_pretrained \
     --checkpoint checkpoint_latest \
