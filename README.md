@@ -14,7 +14,7 @@ Create new conda environment and install pytroch:
 
 ```
 conda env create -f environment.yml
-conda activate mocritic
+conda activate ppmotion
 ```
 
 <!-- Download and setup Isaac Gym. -->
