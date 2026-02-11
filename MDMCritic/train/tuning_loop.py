@@ -706,13 +706,11 @@ class TuneLoop:
             # progress=False,
             cond_fn_with_grad=False,
             detach=False,
-        )
-
-        
+        ) # torch.Size([batch_size, 25, 6, 60])
+        motions = into_critic(outof_mdm(sample)) # torch.Size([batch_size, 60, 25, 3])
         critics = self.critic_model.module.batch_critic(into_critic(outof_mdm(sample)))
         critics = torch.squeeze(critics)
-        motions = into_critic(outof_mdm(sample))
-        # print('critics shape:', critics.shape, ', motions shape: ', motions.shape)
+        print('critics shape:', critics.shape, ', motions shape: ', motions.shape)
         # saving motions and critic scores
         if id is not None:
             torch.save(critics, os.path.join(PROJ_DIR, f"save/gen/uncriticed-critics-batch{id}.pth"))
